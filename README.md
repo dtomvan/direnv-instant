@@ -71,15 +71,6 @@ eval "$(direnv-instant hook zsh)"
 - `DIRENV_INSTANT_DEBUG_LOG`: Path to debug log file for daemon output
 - `DIRENV_DIR`: Directory containing `.envrc` (set by direnv)
 
-### Runtime Files
-
-All runtime files are stored in `$XDG_CACHE_HOME/direnv-instant/<hash>/`:
-
-- `daemon.sock`: Unix socket for daemon communication
-- `env.<pid>`: Environment variables for shell process
-- `env.<pid>.stderr`: Direnv stderr output
-- Temporary files are cleaned up automatically
-
 ## Commands
 
 - `direnv-instant start`: Start the daemon for current directory
