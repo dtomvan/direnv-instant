@@ -25,11 +25,9 @@
 
       perSystem =
         {
-          config,
           self',
-          inputs',
           pkgs,
-          system,
+          lib,
           ...
         }:
         {
@@ -46,6 +44,13 @@
               rust-analyzer
             ];
           };
+
+          checks =
+            let
+              packages = lib.mapAttrs' (n: lib.nameValuePair "package-${n}") self'.packages;
+              devShells = lib.mapAttrs' (n: lib.nameValuePair "devShell-${n}") self'.devShells;
+            in
+            packages // devShells;
         };
     };
 }
