@@ -9,8 +9,6 @@ from typing import TYPE_CHECKING
 
 from tests.helpers import (
     allow_direnv,
-    get_direnv_instant_binary,
-    run_direnv_instant,
     setup_envrc,
     setup_stub_tmux,
     setup_test_env,
@@ -23,7 +21,9 @@ if TYPE_CHECKING:
     from tests.conftest import DirenvInstantRunner
 
 
-def test_slow_direnv_exports_via_tmux(tmp_path: Path, monkeypatch: MonkeyPatch) -> None:
+def test_slow_direnv_exports_via_tmux(
+    tmp_path: Path, monkeypatch: MonkeyPatch, direnv_instant: DirenvInstantRunner
+) -> None:
     """Test direnv exports vars when it takes longer than TMUX_DELAY."""
     setup_envrc(
         tmp_path,
@@ -42,7 +42,7 @@ export BAZ=qux
 
     tmux_called_file = tmp_path / "tmux_called"
     watch_output_file = tmp_path / "watch_output"
-    direnv_instant_cmd = " ".join(get_direnv_instant_binary())
+    direnv_instant_cmd = direnv_instant.cmd_string
 
     setup_stub_tmux(
         tmp_path,
@@ -64,7 +64,7 @@ socket_path="${{@: -1}}"
 
     # Run direnv-instant start (should not block)
     start_time = time.time()
-    result = run_direnv_instant(["start"], env)
+    result = direnv_instant.run(["start"], env)
     elapsed = time.time() - start_time
 
     # Should complete quickly (not wait for direnv to finish)

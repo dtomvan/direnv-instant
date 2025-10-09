@@ -10,7 +10,6 @@ from typing import TYPE_CHECKING
 
 from tests.helpers import (
     allow_direnv,
-    run_direnv_instant,
     setup_envrc,
     setup_stub_tmux,
     setup_test_env,
@@ -22,7 +21,9 @@ if TYPE_CHECKING:
     from tests.conftest import DirenvInstantRunner
 
 
-def test_stop_command_stops_daemon(tmp_path: Path, monkeypatch: MonkeyPatch) -> None:
+def test_stop_command_stops_daemon(
+    tmp_path: Path, monkeypatch: MonkeyPatch, direnv_instant: DirenvInstantRunner
+) -> None:
     """Test that the stop command properly stops the running daemon."""
     setup_envrc(tmp_path, "sleep 3600\n")
     setup_stub_tmux(tmp_path)
@@ -30,7 +31,7 @@ def test_stop_command_stops_daemon(tmp_path: Path, monkeypatch: MonkeyPatch) -> 
 
     env = setup_test_env(tmp_path, os.getpid(), tmux_delay="60")
 
-    result = run_direnv_instant(["start"], env)
+    result = direnv_instant.run(["start"], env)
     assert result.returncode == 0
 
     # Get socket path from stderr file path (in same directory)
@@ -51,7 +52,7 @@ def test_stop_command_stops_daemon(tmp_path: Path, monkeypatch: MonkeyPatch) -> 
 
     # Run stop command
     env["__DIRENV_INSTANT_CURRENT_DIR"] = str(tmp_path)
-    stop_result = run_direnv_instant(["stop"], env)
+    stop_result = direnv_instant.run(["stop"], env)
     assert stop_result.returncode == 0
 
     # Verify socket is gone or not accepting connections

@@ -8,8 +8,6 @@ import subprocess
 import time
 from typing import TYPE_CHECKING
 
-from tests.conftest import PROJECT_ROOT
-
 if TYPE_CHECKING:
     import multiprocessing
     from pathlib import Path
@@ -33,41 +31,6 @@ def wait_for_sigusr1(queue: multiprocessing.Queue, timeout: int) -> None:
         time.sleep(0.1)
 
     queue.put(received)
-
-
-def get_direnv_instant_binary() -> list[str]:
-    """Get the direnv-instant command from env or fallback to cargo run."""
-    if binary := os.environ.get("DIRENV_INSTANT_BIN"):
-        # Resolve relative paths against PROJECT_ROOT, not cwd
-        binary_path = Path(binary)
-        if not binary_path.is_absolute():
-            binary_path = PROJECT_ROOT / binary_path
-        return [str(binary_path.absolute())]
-
-    # Fallback to cargo run
-    return [
-        "cargo",
-        "run",
-        "--quiet",
-        "--manifest-path",
-        str(PROJECT_ROOT / "Cargo.toml"),
-        "--",
-    ]
-
-
-def run_direnv_instant(
-    args: list[str], env: dict[str, str]
-) -> subprocess.CompletedProcess[str]:
-    """Run direnv-instant with given args and environment."""
-    cmd = get_direnv_instant_binary() + args
-
-    return subprocess.run(
-        cmd,
-        check=False,
-        env=env,
-        capture_output=True,
-        text=True,
-    )
 
 
 def setup_envrc(tmp_path: Path, content: str) -> Path:

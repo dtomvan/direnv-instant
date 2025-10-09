@@ -6,7 +6,7 @@ import os
 import time
 from typing import TYPE_CHECKING
 
-from tests.helpers import allow_direnv, run_direnv_instant, setup_envrc
+from tests.helpers import allow_direnv, setup_envrc
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -17,7 +17,7 @@ if TYPE_CHECKING:
 
 
 def test_no_tmux_runs_direnv_synchronously(
-    tmp_path: Path, monkeypatch: MonkeyPatch
+    tmp_path: Path, monkeypatch: MonkeyPatch, direnv_instant: DirenvInstantRunner
 ) -> None:
     """Test that direnv-instant runs direnv synchronously when not in tmux."""
     setup_envrc(
@@ -36,7 +36,7 @@ export SYNC_TEST=success
 
     # Run direnv-instant start (should block until direnv completes)
     start_time = time.time()
-    result = run_direnv_instant(["start"], env)
+    result = direnv_instant.run(["start"], env)
     elapsed = time.time() - start_time
 
     # Should block for at least the sleep duration

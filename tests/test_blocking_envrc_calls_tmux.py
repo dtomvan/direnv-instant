@@ -11,7 +11,6 @@ from typing import TYPE_CHECKING
 
 from tests.helpers import (
     allow_direnv,
-    run_direnv_instant,
     setup_envrc,
     setup_test_env,
     wait_for_sigusr1,
@@ -24,7 +23,10 @@ if TYPE_CHECKING:
 
 
 def test_blocking_envrc_calls_tmux(
-    tmp_path: Path, monkeypatch: MonkeyPatch, tmux_server: Path
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+    tmux_server: Path,
+    direnv_instant: DirenvInstantRunner,
 ) -> None:
     """Test direnv-instant calls tmux when direnv blocks.
 
@@ -46,7 +48,7 @@ def test_blocking_envrc_calls_tmux(
 
     # Run direnv-instant start (should not block)
     start_time = time.time()
-    result = run_direnv_instant(["start"], env)
+    result = direnv_instant.run(["start"], env)
     elapsed = time.time() - start_time
 
     # Should complete quickly (not block forever)
