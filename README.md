@@ -47,6 +47,8 @@ cargo build --release
 
 ## Setup
 
+**IMPORTANT:** direnv-instant replaces direnv's normal shell integration. Do NOT use both together. Remove any existing `eval "$(direnv hook bash)"` or `eval "$(direnv hook zsh)"` from your shell configuration before adding direnv-instant.
+
 ### Bash
 
 Add to your `~/.bashrc`:
