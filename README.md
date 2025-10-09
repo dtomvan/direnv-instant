@@ -69,14 +69,6 @@ eval "$(direnv-instant hook zsh)"
 
 - `DIRENV_INSTANT_TMUX_DELAY`: Delay in seconds before spawning tmux pane (default: 4)
 - `DIRENV_INSTANT_DEBUG_LOG`: Path to debug log file for daemon output
-- `DIRENV_DIR`: Directory containing `.envrc` (set by direnv)
-
-## Commands
-
-- `direnv-instant start`: Start the daemon for current directory
-- `direnv-instant stop`: Stop the daemon for current directory
-- `direnv-instant hook <bash|zsh>`: Output shell integration code
-- `direnv-instant watch <fifo> <socket>`: Watch direnv output (internal use)
 
 ## License
 
