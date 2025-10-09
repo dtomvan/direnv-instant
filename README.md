@@ -29,7 +29,7 @@ Add to your `flake.nix`:
 
 ```nix
 {
-  inputs.direnv-instant.url = "github:yourusername/direnv-instant";
+  inputs.direnv-instant.url = "github:Mic92/direnv-instant";
 }
 ```
 
