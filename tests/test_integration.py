@@ -7,11 +7,15 @@ import os
 import signal
 import socket as sock_module
 import subprocess
+import tempfile
 import time
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import pytest
+
 if TYPE_CHECKING:
+    from collections.abc import Generator
     from _pytest.monkeypatch import MonkeyPatch
 
 PROJECT_ROOT = Path(__file__).parent.parent
@@ -106,19 +110,33 @@ def allow_direnv(tmp_path: Path, monkeypatch: MonkeyPatch) -> None:
     subprocess.run(["direnv", "allow"], check=True, capture_output=True)
 
 
-def test_blocking_envrc_calls_tmux(tmp_path: Path, monkeypatch: MonkeyPatch) -> None:
-    """Test that direnv-instant calls tmux even when direnv blocks forever."""
+@pytest.fixture
+def tmux_server() -> Generator[Path, None, None]:
+    """Set up an isolated tmux server for testing."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        socket_path = Path(tmpdir) / "tmux-socket"
+
+        # Start isolated tmux server
+        subprocess.run(
+            ["tmux", "-S", str(socket_path), "new-session", "-d"],
+            check=True,
+            capture_output=True,
+        )
+
+        try:
+            yield socket_path
+        finally:
+            # Clean up tmux server
+            subprocess.run(
+                ["tmux", "-S", str(socket_path), "kill-server"],
+                check=False,
+                capture_output=True,
+            )
+
+
+def test_blocking_envrc_calls_tmux(tmp_path: Path, monkeypatch: MonkeyPatch, tmux_server: Path) -> None:
+    """Test that direnv-instant calls tmux even when direnv blocks forever and Ctrl-C stops daemon."""
     setup_envrc(tmp_path, "sleep 3600\n")
-
-    tmux_called_file = tmp_path / "tmux_called"
-    setup_stub_tmux(
-        tmp_path,
-        f"""#!/bin/bash
-touch {tmux_called_file}
-echo "$@" > {tmp_path / "tmux_args"}
-""",
-    )
-
     allow_direnv(tmp_path, monkeypatch)
 
     queue: multiprocessing.Queue[bool] = multiprocessing.Queue()
@@ -129,6 +147,8 @@ echo "$@" > {tmp_path / "tmux_args"}
     assert pid is not None, "Failed to get PID of signal process"
 
     env = setup_test_env(tmp_path, pid)
+    # Set TMUX env var to use our isolated server
+    env["TMUX"] = f"{tmux_server},0,0"
 
     # Run direnv-instant start (should not block)
     start_time = time.time()
@@ -144,19 +164,55 @@ echo "$@" > {tmp_path / "tmux_args"}
     assert "__DIRENV_INSTANT_STDERR_FILE" in result.stdout
     assert "__DIRENV_INSTANT_CURRENT_DIR" in result.stdout
 
-    # Wait for tmux to be called (with some buffer beyond the delay)
+    # Extract socket path
+    socket_path = None
+    for line in result.stdout.splitlines():
+        if "__DIRENV_INSTANT_STDERR_FILE" in line:
+            stderr_file = Path(line.split("=", 1)[1].strip().strip("'\""))
+            socket_path = stderr_file.parent / "daemon.sock"
+            break
+    assert socket_path, "Could not find socket path"
+
+    # Wait for tmux pane to be created (with some buffer beyond the delay)
     time.sleep(2)
 
-    # Verify tmux was called
-    assert tmux_called_file.exists(), "tmux stub was not called"
+    # Find the watch pane
+    list_panes = subprocess.run(
+        ["tmux", "-S", str(tmux_server), "list-panes", "-F", "#{pane_id} #{pane_current_command}"],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
 
-    # Verify tmux was called with correct arguments
-    tmux_args_file = tmp_path / "tmux_args"
-    assert tmux_args_file.exists(), "tmux args file not found"
-    tmux_args = tmux_args_file.read_text().strip()
-    assert "split-window" in tmux_args
-    assert "direnv-instant" in tmux_args
-    assert "watch" in tmux_args
+    watch_pane_id = None
+    for line in list_panes.stdout.splitlines():
+        if "direnv-instant" in line or "watch" in line:
+            watch_pane_id = line.split()[0]
+            break
+
+    assert watch_pane_id, f"Watch pane not found. Panes: {list_panes.stdout}"
+
+    # Send Ctrl-C to watch pane
+    subprocess.run(
+        ["tmux", "-S", str(tmux_server), "send-keys", "-t", watch_pane_id, "C-c"],
+        check=True,
+        capture_output=True,
+    )
+
+    # Wait for daemon to stop
+    time.sleep(1)
+
+    # Verify daemon socket is no longer accepting connections
+    daemon_stopped = False
+    try:
+        sock = sock_module.socket(sock_module.AF_UNIX, sock_module.SOCK_STREAM)
+        sock.settimeout(1)
+        sock.connect(str(socket_path))
+        sock.close()
+    except (OSError, TimeoutError):
+        daemon_stopped = True  # Expected - daemon stopped
+
+    assert daemon_stopped, "Daemon still running after Ctrl-C to watch"
 
     # Clean up signal process
     signal_process.join(timeout=1)
@@ -215,8 +271,8 @@ socket_path="${{@: -1}}"
     env_file_path = None
     for line in result.stdout.splitlines():
         if "__DIRENV_INSTANT_ENV_FILE" in line:
-            # Extract path from: export __DIRENV_INSTANT_ENV_FILE="/path/to/file"
-            env_file_path = line.split("=", 1)[1].strip().strip('"')
+            # Extract path from: export __DIRENV_INSTANT_ENV_FILE='/path/to/file'
+            env_file_path = line.split("=", 1)[1].strip().strip("'\"")
             break
     assert env_file_path, "Could not find __DIRENV_INSTANT_ENV_FILE in output"
 
@@ -316,7 +372,7 @@ def test_stop_command_stops_daemon(tmp_path: Path, monkeypatch: MonkeyPatch) -> 
     stderr_file = None
     for line in result.stdout.splitlines():
         if "__DIRENV_INSTANT_STDERR_FILE" in line:
-            stderr_file = Path(line.split("=", 1)[1].strip().strip('"'))
+            stderr_file = Path(line.split("=", 1)[1].strip().strip("'\""))
             break
     assert stderr_file, "Could not find stderr file path"
     socket_path = stderr_file.parent / "daemon.sock"
