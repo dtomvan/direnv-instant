@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 import signal
 import subprocess
 import time
@@ -41,12 +42,16 @@ def setup_envrc(tmp_path: Path, content: str) -> Path:
     return envrc
 
 
-def setup_stub_tmux(tmp_path: Path, script_content: str | None = None) -> Path:
+def setup_stub_tmux(tmp_path: Path, script_body: str = "exit 0") -> Path:
     """Create stub tmux script."""
+    # Find bash for shebang so it works in the nix sandbox
+    bash = shutil.which("bash")
+    if not bash:
+        msg = "bash not found in PATH"
+        raise RuntimeError(msg)
+
     stub_tmux = tmp_path / "tmux"
-    if script_content is None:
-        script_content = "#!/bin/bash\nexit 0\n"
-    stub_tmux.write_text(script_content)
+    stub_tmux.write_text(f"#!{bash}\n{script_body}\n")
     stub_tmux.chmod(0o755)
     return stub_tmux
 

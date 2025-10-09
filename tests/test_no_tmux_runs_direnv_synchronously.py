@@ -22,8 +22,7 @@ def test_no_tmux_runs_direnv_synchronously(
     """Test that direnv-instant runs direnv synchronously when not in tmux."""
     setup_envrc(
         tmp_path,
-        """#!/bin/bash
-sleep 1
+        """sleep 1
 export SYNC_TEST=success
 """,
     )

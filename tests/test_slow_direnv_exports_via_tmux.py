@@ -27,8 +27,7 @@ def test_slow_direnv_exports_via_tmux(
     """Test direnv exports vars when it takes longer than TMUX_DELAY."""
     setup_envrc(
         tmp_path,
-        """#!/bin/bash
-echo "Starting build..." >&2
+        """echo "Starting build..." >&2
 sleep 1
 echo "Still building..." >&2
 sleep 1
@@ -46,12 +45,10 @@ export BAZ=qux
 
     setup_stub_tmux(
         tmp_path,
-        f"""#!/bin/bash
-touch {tmux_called_file}
+        f"""touch {tmux_called_file}
 log_path="${{@: -2:1}}"
 socket_path="${{@: -1}}"
-{direnv_instant_cmd} watch "$log_path" "$socket_path" > {watch_output_file} 2>&1 &
-""",
+{direnv_instant_cmd} watch "$log_path" "$socket_path" > {watch_output_file} 2>&1 &""",
     )
 
     allow_direnv(tmp_path, monkeypatch)
