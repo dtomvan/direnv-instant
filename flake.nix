@@ -35,10 +35,11 @@
           packages.default = self'.packages.direnv-instant;
 
           devShells.default = pkgs.mkShell {
-            inputsFrom = [ self'.packages.direnv-instant ];
+            inputsFrom = [
+              self'.packages.direnv-instant
+              self'.checks.tests
+            ];
             packages = with pkgs; [
-              cargo
-              rustc
               rustfmt
               clippy
               rust-analyzer
@@ -50,7 +51,13 @@
               packages = lib.mapAttrs' (n: lib.nameValuePair "package-${n}") self'.packages;
               devShells = lib.mapAttrs' (n: lib.nameValuePair "devShell-${n}") self'.devShells;
             in
-            packages // devShells;
+            packages
+            // devShells
+            // {
+              tests = pkgs.callPackage ./tests.nix {
+                direnv-instant = self'.packages.direnv-instant;
+              };
+            };
         };
     };
 }

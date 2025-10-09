@@ -269,13 +269,19 @@ fn copy_pty_to_logfile(
                 // Timeout elapsed, check if we should spawn tmux
                 let elapsed_ms = start.elapsed().as_millis() as u64;
                 if !tmux_spawned && elapsed_ms >= tmux_delay_ms && total_bytes > 0 {
+                    // Use full path to binary so tmux can find it
+                    let bin = env::current_exe()
+                        .ok()
+                        .and_then(|p| p.to_str().map(String::from))
+                        .unwrap_or_else(|| "direnv-instant".to_string());
+
                     let _ = Command::new("tmux")
                         .args([
                             "split-window",
                             "-d",
                             "-l",
                             "10",
-                            "direnv-instant",
+                            &bin,
                             "watch",
                             &stderr_file.to_string_lossy(),
                             &socket_path.to_string_lossy(),

@@ -1,0 +1,45 @@
+[project]
+name = "direnv-instant"
+version = "0.1.0"
+description = "Non-blocking direnv integration daemon with tmux support"
+requires-python = ">=3.13"
+
+[tool.ruff]
+target-version = "py313"
+line-length = 88
+
+[tool.ruff.lint]
+select = ["ALL"]
+
+ignore = [
+    # Formatter conflicts
+    "COM812",  # missing-trailing-comma (conflicts with formatter)
+
+    # Docstring style conflicts (choose one style)
+    "D203",    # one-blank-line-before-class (conflicts with D211)
+    "D213",    # multi-line-summary-second-line (conflicts with D212)
+
+    # Security - subprocess usage
+    "S603",    # subprocess-without-shell-equals-true
+    "S607",    # start-process-with-partial-path
+
+    # Project-specific ignores (adjust as needed)
+    "TD002",   # missing-todo-author
+    "TD003",   # missing-todo-link
+    "FIX002",  # line-contains-todo
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Test files can be more lenient
+"tests/**/*.py" = [
+    "S101",    # assert-used (assert is fine in tests)
+    "PLR2004", # magic-value-comparison (magic values are common in tests)
+    "D",       # pydocstyle (docstrings less critical in tests)
+]
+
+[tool.mypy]
+python_version = "3.13"
+strict = true
+
+[tool.pytest.ini_options]
+addopts = "-n auto"

@@ -11,6 +11,11 @@
 
         programs.rustfmt.enable = true;
         programs.nixfmt.enable = true;
+        programs.ruff = {
+          enable = true;
+          format = true;
+          check = true;
+        };
       };
     };
 }

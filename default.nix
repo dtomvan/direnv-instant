@@ -7,7 +7,15 @@ rustPlatform.buildRustPackage {
   pname = "direnv-instant";
   version = "0.1.0";
 
-  src = ./.;
+  src = lib.fileset.toSource {
+    root = ./.;
+    fileset = lib.fileset.unions [
+      ./Cargo.toml
+      ./Cargo.lock
+      ./src
+      ./hooks
+    ];
+  };
 
   cargoHash = "sha256-58jKfejh5QnB2LSO7EfaBryVv5+oBcW9miA8FbjKl+0=";
 
