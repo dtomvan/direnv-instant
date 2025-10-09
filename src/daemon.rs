@@ -11,7 +11,7 @@ use std::ffi::OsString;
 use std::fs::{File, remove_file};
 use std::hash::{Hash, Hasher};
 use std::io::{BufRead, BufReader, Write};
-use std::os::fd::{AsFd, FromRawFd, OwnedFd};
+use std::os::fd::{AsFd, OwnedFd};
 use std::os::unix::ffi::OsStringExt;
 use std::os::unix::fs::PermissionsExt;
 use std::os::unix::net::{UnixListener, UnixStream};
@@ -50,46 +50,21 @@ pub fn get_socket_path(envrc_dir: &Path) -> PathBuf {
     get_runtime_dir(envrc_dir).join("daemon.sock")
 }
 
-struct TempFile {
-    #[allow(dead_code)] // File must be kept alive to prevent fd from being closed
-    file: Option<File>,
-    path: Option<PathBuf>,
-}
+fn create_temp_file(runtime_dir: &Path, prefix: &str) -> std::io::Result<PathBuf> {
+    let template = runtime_dir.join(format!("{}.XXXXXX", prefix));
+    let mut bytes = template.into_os_string().into_vec();
+    bytes.push(0); // null terminator
 
-impl TempFile {
-    fn new(runtime_dir: &Path, prefix: &str) -> std::io::Result<Self> {
-        let template = runtime_dir.join(format!("{}.XXXXXX", prefix));
-        let mut bytes = template.into_os_string().into_vec();
-        bytes.push(0); // null terminator
-
-        let fd = unsafe { libc::mkstemp(bytes.as_mut_ptr().cast()) };
-        if fd == -1 {
-            return Err(std::io::Error::last_os_error());
-        }
-
-        let _file = unsafe { File::from_raw_fd(fd) };
-
-        bytes.pop(); // remove null terminator
-        let path = PathBuf::from(OsString::from_vec(bytes));
-        Ok(TempFile {
-            file: Some(_file),
-            path: Some(path),
-        })
+    let fd = unsafe { libc::mkstemp(bytes.as_mut_ptr().cast()) };
+    if fd == -1 {
+        return Err(std::io::Error::last_os_error());
     }
 
-    fn path(&self) -> &Path {
-        self.path
-            .as_ref()
-            .expect("TempFile path should always be present")
-    }
-}
+    // Close the fd immediately - daemon will reopen and handle cleanup
+    unsafe { libc::close(fd) };
 
-impl Drop for TempFile {
-    fn drop(&mut self) {
-        if let Some(ref p) = self.path {
-            let _ = remove_file(p);
-        }
-    }
+    bytes.pop(); // remove null terminator
+    Ok(PathBuf::from(OsString::from_vec(bytes)))
 }
 
 pub struct DaemonContext {
@@ -97,8 +72,8 @@ pub struct DaemonContext {
     pub socket_path: PathBuf,
     pub env_file: PathBuf,
     pub stderr_file: PathBuf,
-    _temp_file: TempFile,
-    _temp_stderr: TempFile,
+    pub temp_file: PathBuf,
+    pub temp_stderr: PathBuf,
 }
 
 impl DaemonContext {
@@ -110,25 +85,17 @@ impl DaemonContext {
         // Ensure owner-only permissions even if directory already exists
         std::fs::set_permissions(&runtime_dir, PermissionsExt::from_mode(0o700))?;
 
-        let temp_file = TempFile::new(&runtime_dir, "env")?;
-        let temp_stderr = TempFile::new(&runtime_dir, "env_stderr")?;
+        let temp_file = create_temp_file(&runtime_dir, "env")?;
+        let temp_stderr = create_temp_file(&runtime_dir, "env_stderr")?;
 
         Ok(Self {
             parent_pid,
             socket_path: runtime_dir.join("daemon.sock"),
             env_file: runtime_dir.join("env"),
             stderr_file: runtime_dir.join("env.stderr"),
-            _temp_file: temp_file,
-            _temp_stderr: temp_stderr,
+            temp_file,
+            temp_stderr,
         })
-    }
-
-    pub fn temp_file_path(&self) -> &Path {
-        self._temp_file.path()
-    }
-
-    pub fn temp_stderr_path(&self) -> &Path {
-        self._temp_stderr.path()
     }
 }
 
@@ -137,6 +104,9 @@ impl Drop for Cleanup<'_> {
     fn drop(&mut self) {
         let ctx = self.0;
         let _ = remove_file(&ctx.socket_path);
+        // Clean up temp files if they weren't renamed
+        let _ = remove_file(&ctx.temp_file);
+        let _ = remove_file(&ctx.temp_stderr);
     }
 }
 
@@ -243,7 +213,7 @@ fn run_direnv(direnv_cmd: &str, ctx: &DaemonContext) {
         Ok(ForkptyResult::Parent { child, master }) => {
             parent_process(child, master, notify_pids, ctx, should_stop)
         }
-        Ok(ForkptyResult::Child) => child_process(direnv_cmd, ctx.temp_file_path()),
+        Ok(ForkptyResult::Child) => child_process(direnv_cmd, &ctx.temp_file),
         Err(e) => {
             eprintln!("direnv-instant: forkpty failed: {}", e);
             std::process::exit(1);
@@ -363,7 +333,7 @@ fn parent_process(
         .unwrap_or(4000);
 
     // Create temp stderr file for writing direnv PTY output
-    let mut log_file = match File::create(ctx.temp_stderr_path()) {
+    let mut log_file = match File::create(&ctx.temp_stderr) {
         Ok(f) => f,
         Err(e) => {
             eprintln!("direnv-instant: Failed to create stderr log file: {}", e);
@@ -377,7 +347,7 @@ fn parent_process(
         &mut log_file,
         &should_stop,
         tmux_delay_ms,
-        ctx.temp_stderr_path(),
+        &ctx.temp_stderr,
         &ctx.socket_path,
     );
     if !completed {
@@ -392,21 +362,22 @@ fn parent_process(
 
     // Check if stderr file has actual content (not just empty file we created)
     let has_stderr = ctx
-        .temp_stderr_path()
+        .temp_stderr
         .metadata()
         .map(|m| m.len() > 0)
         .unwrap_or(false);
 
     if has_stderr {
-        let _ = std::fs::rename(ctx.temp_stderr_path(), &ctx.stderr_file);
+        let _ = std::fs::rename(&ctx.temp_stderr, &ctx.stderr_file);
     }
-    // If no stderr, temp_stderr will be cleaned up by TempFile Drop
+    // Otherwise Cleanup Drop will remove it
 
     // Only rename env file on success
-    let has_env = success && ctx.temp_file_path().exists();
+    let has_env = success && ctx.temp_file.exists();
     if has_env {
-        let _ = std::fs::rename(ctx.temp_file_path(), &ctx.env_file);
+        let _ = std::fs::rename(&ctx.temp_file, &ctx.env_file);
     }
+    // Otherwise Cleanup Drop will remove it
 
     // Notify shells if we have anything to show
     if has_stderr || has_env {
