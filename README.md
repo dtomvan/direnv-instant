@@ -23,9 +23,9 @@ Instead of blocking your shell prompt while direnv loads environment variables, 
 
 ## Installation
 
-### With Nix Flakes
+### Home Manager
 
-Add to your `flake.nix`:
+Add to your `flake.nix` inputs:
 
 ```nix
 {
@@ -33,10 +33,42 @@ Add to your `flake.nix`:
 }
 ```
 
-Then install:
+Then add to your home-manager packages:
 
+```nix
+home.packages = [
+  inputs.direnv-instant.packages.${pkgs.stdenv.hostPlatform.system}.default
+];
+```
+
+### NixOS
+
+Add to your `flake.nix` inputs:
+
+```nix
+{
+  inputs.direnv-instant.url = "github:Mic92/direnv-instant";
+}
+```
+
+Then add to your NixOS configuration:
+
+```nix
+environment.systemPackages = [
+  inputs.direnv-instant.packages.${pkgs.stdenv.hostPlatform.system}.default
+];
+```
+
+### Adhoc testing
+
+For zsh:
 ```bash
-nix profile install .#direnv-instant
+eval "$(nix run github:Mic92/direnv-instant -- hook zsh)"
+```
+
+For bash:
+```bash
+eval "$(nix run github:Mic92/direnv-instant -- hook bash)"
 ```
 
 ### Building from Source
