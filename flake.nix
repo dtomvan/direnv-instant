@@ -35,10 +35,11 @@
           packages.default = self'.packages.direnv-instant;
 
           devShells.default = pkgs.mkShell {
-            inputsFrom = [ self'.packages.direnv-instant ];
+            inputsFrom = [
+              self'.packages.direnv-instant
+              self'.checks.tests
+            ];
             packages = with pkgs; [
-              cargo
-              rustc
               rustfmt
               clippy
               rust-analyzer
