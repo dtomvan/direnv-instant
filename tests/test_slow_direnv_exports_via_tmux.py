@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import multiprocessing
 import time
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -12,17 +11,19 @@ from tests.helpers import (
     setup_envrc,
     setup_stub_tmux,
     setup_test_env,
-    wait_for_sigusr1,
 )
 
 if TYPE_CHECKING:
     from _pytest.monkeypatch import MonkeyPatch
 
-    from tests.conftest import DirenvInstantRunner
+    from tests.conftest import DirenvInstantRunner, SignalWaiter
 
 
 def test_slow_direnv_exports_via_tmux(
-    tmp_path: Path, monkeypatch: MonkeyPatch, direnv_instant: DirenvInstantRunner
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+    direnv_instant: DirenvInstantRunner,
+    signal_waiter: SignalWaiter,
 ) -> None:
     """Test direnv exports vars when it takes longer than TMUX_DELAY."""
     done_marker = tmp_path / "envrc_done"
@@ -50,11 +51,7 @@ socket_path="${{@: -1}}"
 
     allow_direnv(tmp_path, monkeypatch)
 
-    queue: multiprocessing.Queue[bool] = multiprocessing.Queue()
-    signal_process = multiprocessing.Process(target=wait_for_sigusr1, args=(queue, 30))
-    signal_process.start()
-
-    env = setup_test_env(tmp_path, signal_process.pid)
+    env = setup_test_env(tmp_path, signal_waiter.pid)
 
     # Run direnv-instant start (should not block)
     start_time = time.time()
@@ -85,9 +82,7 @@ socket_path="${{@: -1}}"
     done_marker.touch()
 
     # Wait for daemon to complete by blocking on SIGUSR1 signal
-    signal_process.join(timeout=30)
-    assert not queue.empty(), "SIGUSR1 signal queue is empty - daemon never completed"
-    signal_received = queue.get()
+    signal_received = signal_waiter.wait(timeout=30)
     assert signal_received, "SIGUSR1 was not received"
 
     # Verify env file exists
@@ -115,6 +110,3 @@ socket_path="${{@: -1}}"
     assert len(watch_output) > 0, "watch command produced no output"
     # Verify we captured direnv output
     assert "Starting build" in watch_output or "direnv" in watch_output.lower()
-
-    # Clean up
-    signal_process.terminate()

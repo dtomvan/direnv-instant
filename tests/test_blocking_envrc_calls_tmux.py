@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import multiprocessing
 import socket as sock_module
 import subprocess
 import time
@@ -13,13 +12,12 @@ from tests.helpers import (
     allow_direnv,
     setup_envrc,
     setup_test_env,
-    wait_for_sigusr1,
 )
 
 if TYPE_CHECKING:
     from _pytest.monkeypatch import MonkeyPatch
 
-    from tests.conftest import DirenvInstantRunner
+    from tests.conftest import DirenvInstantRunner, SignalWaiter
 
 
 def test_blocking_envrc_calls_tmux(
@@ -27,6 +25,7 @@ def test_blocking_envrc_calls_tmux(
     monkeypatch: MonkeyPatch,
     tmux_server: Path,
     direnv_instant: DirenvInstantRunner,
+    signal_waiter: SignalWaiter,
 ) -> None:
     """Test direnv-instant calls tmux when direnv blocks.
 
@@ -35,14 +34,7 @@ def test_blocking_envrc_calls_tmux(
     setup_envrc(tmp_path, "sleep 3600\n")
     allow_direnv(tmp_path, monkeypatch)
 
-    queue: multiprocessing.Queue[bool] = multiprocessing.Queue()
-    signal_process = multiprocessing.Process(target=wait_for_sigusr1, args=(queue, 5))
-    signal_process.start()
-
-    pid = signal_process.pid
-    assert pid is not None, "Failed to get PID of signal process"
-
-    env = setup_test_env(tmp_path, pid)
+    env = setup_test_env(tmp_path, signal_waiter.pid)
     # Set TMUX env var to use our isolated server
     env["TMUX"] = f"{tmux_server},0,0"
 
@@ -122,7 +114,3 @@ def test_blocking_envrc_calls_tmux(
         daemon_stopped = True  # Expected - daemon stopped
 
     assert daemon_stopped, "Daemon still running after Ctrl-C to watch"
-
-    # Clean up signal process
-    signal_process.join(timeout=1)
-    signal_process.terminate()
