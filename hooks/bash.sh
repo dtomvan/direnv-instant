@@ -17,17 +17,21 @@ _direnv_handler() {
     __DIRENV_INSTANT_STDERR_FILE=""
   fi
 
-  # Load environment variables
+  # Load environment variables (keep file as cache for next time)
   if [[ -n $__DIRENV_INSTANT_ENV_FILE ]] && [[ -f $__DIRENV_INSTANT_ENV_FILE ]]; then
     eval "$(<"$__DIRENV_INSTANT_ENV_FILE")"
-    rm -f "$__DIRENV_INSTANT_ENV_FILE"
-    __DIRENV_INSTANT_ENV_FILE=""
   fi
 }
 
 # Main hook called on directory changes and prompts
 _direnv_hook() {
   export DIRENV_INSTANT_SHELL_PID=$$
+
+  # Load cached environment immediately if available and caching is enabled
+  if [[ ${DIRENV_INSTANT_USE_CACHE:-1} == 1 ]] && [[ -n $__DIRENV_INSTANT_ENV_FILE ]] && [[ -f $__DIRENV_INSTANT_ENV_FILE ]]; then
+    eval "$(<"$__DIRENV_INSTANT_ENV_FILE")"
+  fi
+
   eval "$(direnv-instant start)"
 }
 
