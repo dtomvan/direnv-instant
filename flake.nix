@@ -50,7 +50,13 @@
               packages = lib.mapAttrs' (n: lib.nameValuePair "package-${n}") self'.packages;
               devShells = lib.mapAttrs' (n: lib.nameValuePair "devShell-${n}") self'.devShells;
             in
-            packages // devShells;
+            packages
+            // devShells
+            // {
+              tests = pkgs.callPackage ./tests.nix {
+                direnv-instant = self'.packages.direnv-instant;
+              };
+            };
         };
     };
 }
