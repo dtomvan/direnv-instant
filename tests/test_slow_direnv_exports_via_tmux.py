@@ -23,10 +23,8 @@ if TYPE_CHECKING:
     from tests.conftest import DirenvInstantRunner
 
 
-def test_slow_direnv_exports_via_tmux(
-    tmp_path: Path, monkeypatch: MonkeyPatch
-) -> None:
-    """Test that direnv exports environment variables even when it takes longer than DIRENV_INSTANT_TMUX_DELAY."""
+def test_slow_direnv_exports_via_tmux(tmp_path: Path, monkeypatch: MonkeyPatch) -> None:
+    """Test direnv exports vars when it takes longer than TMUX_DELAY."""
     setup_envrc(
         tmp_path,
         """#!/bin/bash

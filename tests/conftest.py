@@ -16,7 +16,7 @@ PROJECT_ROOT = Path(__file__).parent.parent
 
 
 @pytest.fixture
-def tmux_server() -> Generator[Path, None, None]:
+def tmux_server() -> Generator[Path]:
     """Set up an isolated tmux server for testing."""
     with tempfile.TemporaryDirectory() as tmpdir:
         socket_path = Path(tmpdir) / "tmux-socket"

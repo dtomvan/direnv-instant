@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import multiprocessing
 import os
 import signal
 import subprocess
@@ -12,6 +11,9 @@ from typing import TYPE_CHECKING
 from tests.conftest import PROJECT_ROOT
 
 if TYPE_CHECKING:
+    import multiprocessing
+    from pathlib import Path
+
     from _pytest.monkeypatch import MonkeyPatch
 
 
@@ -19,7 +21,7 @@ def wait_for_sigusr1(queue: multiprocessing.Queue, timeout: int) -> None:
     """Subprocess that waits for SIGUSR1 and reports back."""
     received = False
 
-    def handler(signum: int, frame: object) -> None:
+    def handler(_signum: int, _frame: object) -> None:
         nonlocal received
         received = True
 

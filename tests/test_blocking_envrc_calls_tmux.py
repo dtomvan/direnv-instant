@@ -26,7 +26,10 @@ if TYPE_CHECKING:
 def test_blocking_envrc_calls_tmux(
     tmp_path: Path, monkeypatch: MonkeyPatch, tmux_server: Path
 ) -> None:
-    """Test that direnv-instant calls tmux even when direnv blocks forever and Ctrl-C stops daemon."""
+    """Test direnv-instant calls tmux when direnv blocks.
+
+    Also verifies that Ctrl-C stops the daemon.
+    """
     setup_envrc(tmp_path, "sleep 3600\n")
     allow_direnv(tmp_path, monkeypatch)
 

@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import os
 import time
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 from tests.helpers import allow_direnv, run_direnv_instant, setup_envrc
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from _pytest.monkeypatch import MonkeyPatch
 
     from tests.conftest import DirenvInstantRunner
