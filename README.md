@@ -140,6 +140,17 @@ eval "$(direnv-instant hook zsh)"
 - `DIRENV_INSTANT_TMUX_DELAY`: Delay in seconds before spawning tmux pane (default: 4)
 - `DIRENV_INSTANT_DEBUG_LOG`: Path to debug log file for daemon output
 
+## FAQ
+
+### How does direnv-instant differ from lorri?
+
+While both tools provide automatic environment rebuilding for Nix projects, direnv-instant offers several key usability improvements:
+
+- **Built-in visibility**: After 4 seconds (configurable), direnv-instant automatically spawns a tmux split pane showing direnv output. You don't need to separately monitor journal logs to see what's happening.
+- **Transparent rebuilds**: With lorri, you have to actively watch the journal to know if it's doing heavy rebuilds. direnv-instant makes this visible by default in your terminal.
+- **Interruptible**: Unlike lorri, you can ctrl-c to interrupt operations when needed.
+- **Shell integration focused**: direnv-instant is specifically designed as a drop-in replacement for direnv's shell integration, working with any direnv-compatible project.
+
 ## License
 
 MIT
