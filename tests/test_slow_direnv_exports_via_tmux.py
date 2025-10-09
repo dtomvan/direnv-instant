@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import multiprocessing
 import time
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -12,27 +11,26 @@ from tests.helpers import (
     setup_envrc,
     setup_stub_tmux,
     setup_test_env,
-    wait_for_sigusr1,
 )
 
 if TYPE_CHECKING:
     from _pytest.monkeypatch import MonkeyPatch
 
-    from tests.conftest import DirenvInstantRunner
+    from tests.conftest import DirenvInstantRunner, SignalWaiter
 
 
 def test_slow_direnv_exports_via_tmux(
-    tmp_path: Path, monkeypatch: MonkeyPatch, direnv_instant: DirenvInstantRunner
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+    direnv_instant: DirenvInstantRunner,
+    signal_waiter: SignalWaiter,
 ) -> None:
     """Test direnv exports vars when it takes longer than TMUX_DELAY."""
+    done_marker = tmp_path / "envrc_done"
     setup_envrc(
         tmp_path,
-        """echo "Starting build..." >&2
-sleep 1
-echo "Still building..." >&2
-sleep 1
-echo "Almost done..." >&2
-sleep 1
+        f"""echo "Starting build..." >&2
+while [ ! -f {done_marker} ]; do sleep 0.1; done
 echo "Build complete!" >&2
 export FOO=bar
 export BAZ=qux
@@ -53,11 +51,7 @@ socket_path="${{@: -1}}"
 
     allow_direnv(tmp_path, monkeypatch)
 
-    queue: multiprocessing.Queue[bool] = multiprocessing.Queue()
-    signal_process = multiprocessing.Process(target=wait_for_sigusr1, args=(queue, 10))
-    signal_process.start()
-
-    env = setup_test_env(tmp_path, signal_process.pid)
+    env = setup_test_env(tmp_path, signal_waiter.pid)
 
     # Run direnv-instant start (should not block)
     start_time = time.time()
@@ -78,17 +72,22 @@ socket_path="${{@: -1}}"
     assert env_file_path, "Could not find __DIRENV_INSTANT_ENV_FILE in output"
 
     # Wait for tmux to be called (after 1s delay)
-    time.sleep(2)
-    assert tmux_called_file.exists(), "tmux stub was not called"
-
-    # Wait for direnv to complete and write env file (3s execution + processing time)
-    timeout_val = 6
+    timeout = 5
     start = time.time()
-    env_file = Path(env_file_path)
-    while not env_file.exists() and (time.time() - start) < timeout_val:
+    while not tmux_called_file.exists() and (time.time() - start) < timeout:
         time.sleep(0.1)
+    assert tmux_called_file.exists(), f"tmux stub was not called after {timeout}s"
 
-    assert env_file.exists(), f"Env file not created after {timeout_val}s"
+    # Unblock .envrc by creating marker file
+    done_marker.touch()
+
+    # Wait for daemon to complete by blocking on SIGUSR1 signal
+    signal_received = signal_waiter.wait(timeout=30)
+    assert signal_received, "SIGUSR1 was not received"
+
+    # Verify env file exists
+    env_file = Path(env_file_path)
+    assert env_file.exists(), "Env file not created"
 
     # Verify environment variables were exported
     env_content = env_file.read_text()
@@ -96,12 +95,6 @@ socket_path="${{@: -1}}"
     assert "bar" in env_content, "bar not found in env file"
     assert "BAZ" in env_content, "BAZ not found in env file"
     assert "qux" in env_content, "qux not found in env file"
-
-    # Verify SIGUSR1 was received
-    signal_process.join(timeout=1)
-    assert not queue.empty(), "SIGUSR1 signal queue is empty"
-    signal_received = queue.get()
-    assert signal_received, "SIGUSR1 was not received"
 
     # Wait for watch output to be captured
     timeout_watch = 5
@@ -117,6 +110,3 @@ socket_path="${{@: -1}}"
     assert len(watch_output) > 0, "watch command produced no output"
     # Verify we captured direnv output
     assert "Starting build" in watch_output or "direnv" in watch_output.lower()
-
-    # Clean up
-    signal_process.terminate()

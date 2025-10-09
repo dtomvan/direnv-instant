@@ -4,34 +4,13 @@ from __future__ import annotations
 
 import os
 import shutil
-import signal
 import subprocess
-import time
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    import multiprocessing
     from pathlib import Path
 
     from _pytest.monkeypatch import MonkeyPatch
-
-
-def wait_for_sigusr1(queue: multiprocessing.Queue[bool], timeout: int) -> None:
-    """Subprocess that waits for SIGUSR1 and reports back."""
-    received = False
-
-    def handler(_signum: int, _frame: object) -> None:
-        nonlocal received
-        received = True
-
-    signal.signal(signal.SIGUSR1, handler)
-
-    # Wait for signal
-    start = time.time()
-    while not received and (time.time() - start) < timeout:
-        time.sleep(0.1)
-
-    queue.put(received)
 
 
 def setup_envrc(tmp_path: Path, content: str) -> Path:

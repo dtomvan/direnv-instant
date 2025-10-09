@@ -1,4 +1,5 @@
 use nix::errno::Errno;
+use nix::libc;
 use nix::pty::{ForkptyResult, Winsize, forkpty};
 use nix::sys::select::{FdSet, select};
 use nix::sys::signal::{Signal, kill};
@@ -6,10 +7,13 @@ use nix::sys::time::{TimeVal, TimeValLike};
 use nix::sys::wait::{WaitPidFlag, WaitStatus, waitpid};
 use nix::unistd::{ForkResult, Pid, dup2_stderr, dup2_stdin, dup2_stdout, fork, read, setsid};
 use std::collections::hash_map::DefaultHasher;
+use std::ffi::OsString;
 use std::fs::{File, remove_file};
 use std::hash::{Hash, Hasher};
 use std::io::{BufRead, BufReader, Write};
 use std::os::fd::{AsFd, OwnedFd};
+use std::os::unix::ffi::OsStringExt;
+use std::os::unix::fs::PermissionsExt;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -46,6 +50,23 @@ pub fn get_socket_path(envrc_dir: &Path) -> PathBuf {
     get_runtime_dir(envrc_dir).join("daemon.sock")
 }
 
+fn create_temp_file(runtime_dir: &Path, prefix: &str) -> std::io::Result<PathBuf> {
+    let template = runtime_dir.join(format!("{}.XXXXXX", prefix));
+    let mut bytes = template.into_os_string().into_vec();
+    bytes.push(0); // null terminator
+
+    let fd = unsafe { libc::mkstemp(bytes.as_mut_ptr().cast()) };
+    if fd == -1 {
+        return Err(std::io::Error::last_os_error());
+    }
+
+    // Close the fd immediately - daemon will reopen and handle cleanup
+    unsafe { libc::close(fd) };
+
+    bytes.pop(); // remove null terminator
+    Ok(PathBuf::from(OsString::from_vec(bytes)))
+}
+
 pub struct DaemonContext {
     pub parent_pid: i32,
     pub socket_path: PathBuf,
@@ -56,18 +77,25 @@ pub struct DaemonContext {
 }
 
 impl DaemonContext {
-    pub fn new(parent_pid: i32, envrc_dir: PathBuf) -> Self {
+    pub fn new(parent_pid: i32, envrc_dir: PathBuf) -> std::io::Result<Self> {
         let runtime_dir = get_runtime_dir(&envrc_dir);
-        let base = format!("env.{parent_pid}");
 
-        Self {
+        // Create runtime directory if it doesn't exist (needed for mkstemp)
+        std::fs::create_dir_all(&runtime_dir)?;
+        // Ensure owner-only permissions even if directory already exists
+        std::fs::set_permissions(&runtime_dir, PermissionsExt::from_mode(0o700))?;
+
+        let temp_file = create_temp_file(&runtime_dir, "env")?;
+        let temp_stderr = create_temp_file(&runtime_dir, "env_stderr")?;
+
+        Ok(Self {
             parent_pid,
             socket_path: runtime_dir.join("daemon.sock"),
-            env_file: runtime_dir.join(&base),
-            stderr_file: runtime_dir.join(format!("{base}.stderr")),
-            temp_file: runtime_dir.join(format!("{base}.tmp")),
-            temp_stderr: runtime_dir.join(format!("{base}.tmp.stderr")),
-        }
+            env_file: runtime_dir.join("env"),
+            stderr_file: runtime_dir.join("env.stderr"),
+            temp_file,
+            temp_stderr,
+        })
     }
 }
 
@@ -75,11 +103,10 @@ struct Cleanup<'a>(&'a DaemonContext);
 impl Drop for Cleanup<'_> {
     fn drop(&mut self) {
         let ctx = self.0;
-        let _ = (
-            remove_file(&ctx.temp_file),
-            remove_file(&ctx.temp_stderr),
-            remove_file(&ctx.socket_path),
-        );
+        let _ = remove_file(&ctx.socket_path);
+        // Clean up temp files if they weren't renamed
+        let _ = remove_file(&ctx.temp_file);
+        let _ = remove_file(&ctx.temp_stderr);
     }
 }
 
@@ -96,9 +123,6 @@ pub fn stop_daemon(socket_path: &Path) {
 }
 
 pub fn start_daemon(direnv_cmd: &str, ctx: &DaemonContext) {
-    let runtime_dir = ctx.socket_path.parent().expect("Invalid socket path");
-    std::fs::create_dir_all(runtime_dir).expect("Failed to create runtime directory");
-
     // Check if daemon already running
     if ctx.socket_path.exists() {
         if UnixStream::connect(&ctx.socket_path).is_ok() {
@@ -346,13 +370,14 @@ fn parent_process(
     if has_stderr {
         let _ = std::fs::rename(&ctx.temp_stderr, &ctx.stderr_file);
     }
-    // If no stderr, temp_stderr will be cleaned up by Cleanup drop handler
+    // Otherwise Cleanup Drop will remove it
 
     // Only rename env file on success
     let has_env = success && ctx.temp_file.exists();
     if has_env {
         let _ = std::fs::rename(&ctx.temp_file, &ctx.env_file);
     }
+    // Otherwise Cleanup Drop will remove it
 
     // Notify shells if we have anything to show
     if has_stderr || has_env {

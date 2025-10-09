@@ -39,7 +39,14 @@ pub fn run() {
     }
 
     // Set up daemon context
-    let ctx = DaemonContext::new(parent_pid, envrc_dir);
+    let ctx = match DaemonContext::new(parent_pid, envrc_dir) {
+        Ok(ctx) => ctx,
+        Err(e) => {
+            eprintln!("direnv-instant: Failed to create temp files: {}", e);
+            run_direnv_sync(direnv, true);
+            return;
+        }
+    };
     export_path_var("__DIRENV_INSTANT_ENV_FILE", &ctx.env_file);
     export_path_var("__DIRENV_INSTANT_STDERR_FILE", &ctx.stderr_file);
 

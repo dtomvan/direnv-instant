@@ -7,6 +7,7 @@ Non-blocking direnv integration daemon with tmux support that provides instant s
 ## Features
 
 - **Instant Prompts**: No more waiting for direnv to finish loading environments
+- **Environment Caching**: Uses cached environment from previous load for truly instant prompts
 - **Asynchronous Loading**: Direnv runs in the background, shell gets notified when ready via SIGUSR1
 - **Tmux Integration**: Automatically spawns a tmux pane to show direnv output when loading takes too long
 - **Shell Support**: Works with both bash and zsh
@@ -21,22 +22,88 @@ Instead of blocking your shell prompt while direnv loads environment variables, 
 4. Automatically applies the new environment variables without disrupting your workflow
 5. If direnv takes longer than 4 seconds (configurable), spawns a tmux pane showing progress
 
+## Recommended
+
+For Nix users, we highly recommend using [nix-direnv](https://github.com/nix-community/nix-direnv) alongside direnv-instant. It provides intelligent caching of Nix environments and creates gcroots to prevent garbage collection, which is essential for direnv-instant's environment caching to work reliably.
+
 ## Installation
 
-### With Nix Flakes
+### Home Manager
 
-Add to your `flake.nix`:
+Add to your `flake.nix` inputs:
 
 ```nix
 {
-  inputs.direnv-instant.url = "github:yourusername/direnv-instant";
+  inputs.direnv-instant.url = "github:Mic92/direnv-instant";
 }
 ```
 
-Then install:
+Then make `inputs` available to your home-manager modules via `extraSpecialArgs`:
 
+```nix
+homeConfigurations."user" = home-manager.lib.homeManagerConfiguration {
+  # ... other config ...
+  extraSpecialArgs = { inherit inputs; };
+  modules = [
+    ./home.nix
+  ];
+};
+```
+
+Now add to your home-manager configuration:
+
+```nix
+{ inputs, pkgs, ... }:
+{
+  home.packages = [
+    inputs.direnv-instant.packages.${pkgs.stdenv.hostPlatform.system}.default
+  ];
+}
+```
+
+### NixOS
+
+Add to your `flake.nix` inputs:
+
+```nix
+{
+  inputs.direnv-instant.url = "github:Mic92/direnv-instant";
+}
+```
+
+Then make `inputs` available to your NixOS modules by adding `specialArgs`:
+
+```nix
+nixosSystem {
+  # ... other config ...
+  specialArgs = { inherit inputs; };
+  modules = [
+    ./configuration.nix
+  ];
+}
+```
+
+Now add to your NixOS configuration:
+
+```nix
+{ inputs, pkgs, ... }:
+{
+  environment.systemPackages = [
+    inputs.direnv-instant.packages.${pkgs.stdenv.hostPlatform.system}.default
+  ];
+}
+```
+
+### Adhoc testing
+
+For zsh:
 ```bash
-nix profile install .#direnv-instant
+eval "$(nix run github:Mic92/direnv-instant -- hook zsh)"
+```
+
+For bash:
+```bash
+eval "$(nix run github:Mic92/direnv-instant -- hook bash)"
 ```
 
 ### Building from Source
@@ -69,6 +136,7 @@ eval "$(direnv-instant hook zsh)"
 
 ### Environment Variables
 
+- `DIRENV_INSTANT_USE_CACHE`: Enable cached environment loading for instant prompts (default: 1). Set to 0 to disable caching.
 - `DIRENV_INSTANT_TMUX_DELAY`: Delay in seconds before spawning tmux pane (default: 4)
 - `DIRENV_INSTANT_DEBUG_LOG`: Path to debug log file for daemon output
 
