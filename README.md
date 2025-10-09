@@ -38,12 +38,27 @@ Add to your `flake.nix` inputs:
 }
 ```
 
-Then add to your home-manager packages:
+Then make `inputs` available to your home-manager modules via `extraSpecialArgs`:
 
 ```nix
-home.packages = [
-  inputs.direnv-instant.packages.${pkgs.stdenv.hostPlatform.system}.default
-];
+homeConfigurations."user" = home-manager.lib.homeManagerConfiguration {
+  # ... other config ...
+  extraSpecialArgs = { inherit inputs; };
+  modules = [
+    ./home.nix
+  ];
+};
+```
+
+Now add to your home-manager configuration:
+
+```nix
+{ inputs, pkgs, ... }:
+{
+  home.packages = [
+    inputs.direnv-instant.packages.${pkgs.stdenv.hostPlatform.system}.default
+  ];
+}
 ```
 
 ### NixOS
@@ -56,12 +71,27 @@ Add to your `flake.nix` inputs:
 }
 ```
 
-Then add to your NixOS configuration:
+Then make `inputs` available to your NixOS modules by adding `specialArgs`:
 
 ```nix
-environment.systemPackages = [
-  inputs.direnv-instant.packages.${pkgs.stdenv.hostPlatform.system}.default
-];
+nixosSystem {
+  # ... other config ...
+  specialArgs = { inherit inputs; };
+  modules = [
+    ./configuration.nix
+  ];
+}
+```
+
+Now add to your NixOS configuration:
+
+```nix
+{ inputs, pkgs, ... }:
+{
+  environment.systemPackages = [
+    inputs.direnv-instant.packages.${pkgs.stdenv.hostPlatform.system}.default
+  ];
+}
 ```
 
 ### Adhoc testing
