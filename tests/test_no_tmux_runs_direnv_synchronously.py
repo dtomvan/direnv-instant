@@ -38,8 +38,8 @@ export SYNC_TEST=success
     result = direnv_instant.run(["start"], env)
     elapsed = time.time() - start_time
 
-    # Should block for at least the sleep duration
-    assert elapsed >= 1, f"direnv-instant returned too quickly: {elapsed}s"
+    # Should block for at least the sleep duration (with small margin for clock jitter)
+    assert elapsed >= 0.9, f"direnv-instant returned too quickly: {elapsed}s"
     assert result.returncode == 0, f"Failed: {result.stderr}"
 
     # Should output direnv's export statements directly

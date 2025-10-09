@@ -41,14 +41,14 @@ export BAZ=qux
 
     tmux_called_file = tmp_path / "tmux_called"
     watch_output_file = tmp_path / "watch_output"
-    direnv_instant_cmd = direnv_instant.cmd_string
 
     setup_stub_tmux(
         tmp_path,
         f"""touch {tmux_called_file}
 log_path="${{@: -2:1}}"
 socket_path="${{@: -1}}"
-{direnv_instant_cmd} watch "$log_path" "$socket_path" > {watch_output_file} 2>&1 &""",
+{direnv_instant.binary_path} watch "$log_path" "$socket_path" \\
+  > {watch_output_file} 2>&1 &""",
     )
 
     allow_direnv(tmp_path, monkeypatch)

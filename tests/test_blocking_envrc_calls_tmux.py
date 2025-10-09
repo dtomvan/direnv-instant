@@ -69,31 +69,38 @@ def test_blocking_envrc_calls_tmux(
             break
     assert socket_path, "Could not find socket path"
 
-    # Wait for tmux pane to be created (with some buffer beyond the delay)
-    time.sleep(2)
-
-    # Find the watch pane
-    list_panes = subprocess.run(
-        [
-            "tmux",
-            "-S",
-            str(tmux_server),
-            "list-panes",
-            "-F",
-            "#{pane_id} #{pane_current_command}",
-        ],
-        capture_output=True,
-        text=True,
-        check=True,
-    )
-
+    # Poll for watch pane to be created (with timeout)
     watch_pane_id = None
-    for line in list_panes.stdout.splitlines():
-        if "direnv-instant" in line or "watch" in line:
-            watch_pane_id = line.split()[0]
+    start = time.time()
+    timeout = 5  # Should appear within delay + buffer
+    while time.time() - start < timeout:
+        list_panes = subprocess.run(
+            [
+                "tmux",
+                "-S",
+                str(tmux_server),
+                "list-panes",
+                "-F",
+                "#{pane_id} #{pane_current_command}",
+            ],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+
+        for line in list_panes.stdout.splitlines():
+            if "direnv-instant" in line or "watch" in line:
+                watch_pane_id = line.split()[0]
+                break
+
+        if watch_pane_id:
             break
 
-    assert watch_pane_id, f"Watch pane not found. Panes: {list_panes.stdout}"
+        time.sleep(0.1)
+
+    assert watch_pane_id, (
+        f"Watch pane not found after {timeout}s. Panes: {list_panes.stdout}"
+    )
 
     # Send Ctrl-C to watch pane
     subprocess.run(
@@ -108,10 +115,9 @@ def test_blocking_envrc_calls_tmux(
     # Verify daemon socket is no longer accepting connections
     daemon_stopped = False
     try:
-        sock = sock_module.socket(sock_module.AF_UNIX, sock_module.SOCK_STREAM)
-        sock.settimeout(1)
-        sock.connect(str(socket_path))
-        sock.close()
+        with sock_module.socket(sock_module.AF_UNIX, sock_module.SOCK_STREAM) as sock:
+            sock.settimeout(1)
+            sock.connect(str(socket_path))
     except (OSError, TimeoutError):
         daemon_stopped = True  # Expected - daemon stopped
 

@@ -57,11 +57,16 @@ def test_stop_command_stops_daemon(
 
     # Verify socket is gone or not accepting connections
     time.sleep(1)
+
+    # Socket file should be removed
+    if socket_path.exists():
+        msg = "Daemon socket file still exists after stop"
+        raise AssertionError(msg)
+
     try:
-        sock = sock_module.socket(sock_module.AF_UNIX, sock_module.SOCK_STREAM)
-        sock.settimeout(1)
-        sock.connect(str(socket_path))
-        sock.close()
+        with sock_module.socket(sock_module.AF_UNIX, sock_module.SOCK_STREAM) as sock:
+            sock.settimeout(1)
+            sock.connect(str(socket_path))
     except (OSError, TimeoutError):
         pass  # Expected - daemon stopped
     else:

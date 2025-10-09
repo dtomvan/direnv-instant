@@ -16,7 +16,7 @@ if TYPE_CHECKING:
     from _pytest.monkeypatch import MonkeyPatch
 
 
-def wait_for_sigusr1(queue: multiprocessing.Queue, timeout: int) -> None:
+def wait_for_sigusr1(queue: multiprocessing.Queue[bool], timeout: int) -> None:
     """Subprocess that waits for SIGUSR1 and reports back."""
     received = False
 

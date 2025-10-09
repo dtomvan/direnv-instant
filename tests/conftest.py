@@ -19,22 +19,16 @@ PROJECT_ROOT = Path(__file__).parent.parent
 class DirenvInstantRunner:
     """Helper to run direnv-instant binary."""
 
-    def __init__(self, binary_cmd: list[str]) -> None:
-        """Initialize with binary command."""
-        self.binary_cmd = binary_cmd
-
-    @property
-    def cmd_string(self) -> str:
-        """Get binary command as a shell string."""
-        return " ".join(self.binary_cmd)
+    def __init__(self, binary_path: str) -> None:
+        """Initialize with binary path."""
+        self.binary_path = binary_path
 
     def run(
         self, args: list[str], env: dict[str, str]
     ) -> subprocess.CompletedProcess[str]:
         """Run direnv-instant with given args and environment."""
-        cmd = self.binary_cmd + args
         return subprocess.run(
-            cmd,
+            [self.binary_path, *args],
             check=False,
             env=env,
             capture_output=True,
@@ -50,9 +44,9 @@ def direnv_instant() -> DirenvInstantRunner:
         binary_path = Path(binary)
         if not binary_path.is_absolute():
             binary_path = PROJECT_ROOT / binary_path
-        return DirenvInstantRunner([str(binary_path.absolute())])
+        return DirenvInstantRunner(str(binary_path.absolute()))
 
-    # Build binary first to avoid timing issues in tests
+    # Build binary and return the target path
     subprocess.run(
         ["cargo", "build", "--quiet"],
         cwd=PROJECT_ROOT,
@@ -60,17 +54,11 @@ def direnv_instant() -> DirenvInstantRunner:
         capture_output=True,
     )
 
-    # Use cargo run
-    return DirenvInstantRunner(
-        [
-            "cargo",
-            "run",
-            "--quiet",
-            "--manifest-path",
-            str(PROJECT_ROOT / "Cargo.toml"),
-            "--",
-        ]
-    )
+    # Find the built binary
+    target_dir = PROJECT_ROOT / "target" / "debug"
+    binary_name = "direnv-instant.exe" if os.name == "nt" else "direnv-instant"
+    binary_path = target_dir / binary_name
+    return DirenvInstantRunner(str(binary_path))
 
 
 @pytest.fixture
