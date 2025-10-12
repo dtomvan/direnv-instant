@@ -2,6 +2,8 @@ use std::{env, io, process::Command};
 
 use crate::daemon::DaemonContext;
 
+const PANE_HEIGHT: &str = "10";
+
 #[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Multiplexer {
@@ -23,7 +25,7 @@ impl Multiplexer {
     }
 
     pub fn spawn(&self, ctx: &DaemonContext) -> io::Result<()> {
-        // Use full path to binary so tmux can find it
+        // Use full path to binary so the multiplexer can find it
         let bin = env::current_exe()
             .ok()
             .and_then(|p| p.to_str().map(String::from))
@@ -34,11 +36,17 @@ impl Multiplexer {
             Multiplexer::Zellij => "zellij",
         };
 
-        let width = "10";
-
         let mux_args = match self {
-            Multiplexer::Tmux => vec!["split-window", "-d", "-l", width],
-            Multiplexer::Zellij => vec!["action", "new-pane", "-d", "down", "--width", width, "--"],
+            Multiplexer::Tmux => vec!["split-window", "-d", "-l", PANE_HEIGHT],
+            Multiplexer::Zellij => vec![
+                "action",
+                "new-pane",
+                "-d",
+                "down",
+                "--width",
+                PANE_HEIGHT,
+                "--",
+            ],
         };
 
         Command::new(mux_bin)
@@ -59,7 +67,7 @@ impl Multiplexer {
             Multiplexer::Zellij => "DIRENV_INSTANT_ZELLIJ_DELAY",
         };
 
-        (["DIRENV_INSTANT_MUX_DELAY", specific_env])
+        ([specific_env, "DIRENV_INSTANT_MUX_DELAY"])
             .iter()
             .map(env::var)
             .flat_map(Result::ok)
