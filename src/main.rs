@@ -1,5 +1,6 @@
 mod commands;
 mod daemon;
+mod mux;
 
 use std::env;
 use std::path::Path;

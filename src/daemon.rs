@@ -21,6 +21,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::{env, thread};
 
+use crate::mux::Multiplexer;
+
 const PTY_WINSIZE: Winsize = Winsize {
     ws_row: 24,
     ws_col: 80,
@@ -74,6 +76,7 @@ pub struct DaemonContext {
     pub stderr_file: PathBuf,
     pub temp_file: PathBuf,
     pub temp_stderr: PathBuf,
+    pub multiplexer: Option<Multiplexer>,
 }
 
 impl DaemonContext {
@@ -95,6 +98,7 @@ impl DaemonContext {
             stderr_file: runtime_dir.join("env.stderr"),
             temp_file,
             temp_stderr,
+            multiplexer: Multiplexer::detect(),
         })
     }
 }
@@ -252,15 +256,15 @@ fn copy_pty_to_logfile(
     master: &OwnedFd,
     log_file: &mut File,
     should_stop: &Arc<AtomicBool>,
-    tmux_delay_ms: u64,
-    stderr_file: &Path,
-    socket_path: &Path,
+    ctx: &DaemonContext,
 ) -> bool {
     use std::time::Instant;
 
+    let mux_delay_ms = ctx.multiplexer.map(|x| x.mux_delay_ms()).unwrap_or(4000);
+
     let mut buf = [0u8; 8192];
     let mut total_bytes = 0;
-    let mut tmux_spawned = false;
+    let mut mux_spawned = false;
     let start = Instant::now();
 
     loop {
@@ -290,28 +294,15 @@ fn copy_pty_to_logfile(
                 return true;
             }
             _ => {
-                // Timeout elapsed, check if we should spawn tmux
+                // Timeout elapsed, check if we should spawn the multiplexer
                 let elapsed_ms = start.elapsed().as_millis() as u64;
-                if !tmux_spawned && elapsed_ms >= tmux_delay_ms && total_bytes > 0 {
-                    // Use full path to binary so tmux can find it
-                    let bin = env::current_exe()
-                        .ok()
-                        .and_then(|p| p.to_str().map(String::from))
-                        .unwrap_or_else(|| "direnv-instant".to_string());
-
-                    let _ = Command::new("tmux")
-                        .args([
-                            "split-window",
-                            "-d",
-                            "-l",
-                            "10",
-                            &bin,
-                            "watch",
-                            &stderr_file.to_string_lossy(),
-                            &socket_path.to_string_lossy(),
-                        ])
-                        .spawn();
-                    tmux_spawned = true;
+                if !mux_spawned
+                    && elapsed_ms >= mux_delay_ms
+                    && total_bytes > 0
+                    && let Some(multiplexer) = ctx.multiplexer
+                {
+                    let _ = multiplexer.spawn(ctx);
+                    mux_spawned = true;
                 }
                 continue;
             }
@@ -326,12 +317,6 @@ fn parent_process(
     ctx: &DaemonContext,
     should_stop: Arc<AtomicBool>,
 ) {
-    let tmux_delay_ms = env::var("DIRENV_INSTANT_TMUX_DELAY")
-        .ok()
-        .and_then(|s| s.parse::<u64>().ok())
-        .map(|s| s * 1000)
-        .unwrap_or(4000);
-
     // Create temp stderr file for writing direnv PTY output
     let mut log_file = match File::create(&ctx.temp_stderr) {
         Ok(f) => f,
@@ -342,14 +327,7 @@ fn parent_process(
         }
     };
 
-    let completed = copy_pty_to_logfile(
-        &master,
-        &mut log_file,
-        &should_stop,
-        tmux_delay_ms,
-        &ctx.temp_stderr,
-        &ctx.socket_path,
-    );
+    let completed = copy_pty_to_logfile(&master, &mut log_file, &should_stop, &ctx);
     if !completed {
         let _ = kill(child, Signal::SIGTERM);
         return;

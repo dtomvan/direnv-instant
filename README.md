@@ -2,14 +2,14 @@
 
 Status: Beta
 
-Non-blocking direnv integration daemon with tmux support that provides instant shell prompts by running direnv asynchronously in the background.
+Non-blocking direnv integration daemon with tmux/zellij support that provides instant shell prompts by running direnv asynchronously in the background.
 
 ## Features
 
 - **Instant Prompts**: No more waiting for direnv to finish loading environments
 - **Environment Caching**: Uses cached environment from previous load for truly instant prompts
 - **Asynchronous Loading**: Direnv runs in the background, shell gets notified when ready via SIGUSR1
-- **Tmux Integration**: Automatically spawns a tmux pane to show direnv output when loading takes too long
+- **Tmux/Zellij Integration**: Automatically spawns a tmux/zellij pane to show direnv output when loading takes too long
 - **Shell Support**: Works with both bash and zsh
 
 ## How It Works
@@ -20,7 +20,7 @@ Instead of blocking your shell prompt while direnv loads environment variables, 
 2. Returns control to your shell immediately for an instant prompt
 3. Notifies your shell via SIGUSR1 when the environment is ready
 4. Automatically applies the new environment variables without disrupting your workflow
-5. If direnv takes longer than 4 seconds (configurable), spawns a tmux pane showing progress
+5. If direnv takes longer than 4 seconds (configurable), spawns a tmux/zellij pane showing progress
 
 ## Recommended
 
@@ -137,7 +137,9 @@ eval "$(direnv-instant hook zsh)"
 ### Environment Variables
 
 - `DIRENV_INSTANT_USE_CACHE`: Enable cached environment loading for instant prompts (default: 1). Set to 0 to disable caching.
-- `DIRENV_INSTANT_TMUX_DELAY`: Delay in seconds before spawning tmux pane (default: 4)
+- `DIRENV_INSTANT_MUX_DELAY`: Delay in seconds before spawning multiplexer pane (default: 4)
+- `DIRENV_INSTANT_TMUX_DELAY`: Delay in seconds before spawning tmux pane (default: `$DIRENV_INSTANT_MUX_DELAY`)
+- `DIRENV_INSTANT_ZELLIJ_DELAY`: Delay in seconds before spawning zellij pane (default: `$DIRENV_INSTANT_MUX_DELAY`)
 - `DIRENV_INSTANT_DEBUG_LOG`: Path to debug log file for daemon output
 
 ## FAQ
@@ -146,7 +148,7 @@ eval "$(direnv-instant hook zsh)"
 
 While both tools provide automatic environment rebuilding for Nix projects, direnv-instant offers several key usability improvements:
 
-- **Built-in visibility**: After 4 seconds (configurable), direnv-instant automatically spawns a tmux split pane showing direnv output. You don't need to separately monitor journal logs to see what's happening.
+- **Built-in visibility**: After 4 seconds (configurable), direnv-instant automatically spawns a tmux/zellij split pane showing direnv output. You don't need to separately monitor journal logs to see what's happening.
 - **Transparent rebuilds**: With lorri, you have to actively watch the journal to know if it's doing heavy rebuilds. direnv-instant makes this visible by default in your terminal.
 - **Interruptible**: Unlike lorri, you can ctrl-c to interrupt operations when needed.
 - **Shell integration focused**: direnv-instant is specifically designed as a drop-in replacement for direnv's shell integration, working with any direnv-compatible project.
