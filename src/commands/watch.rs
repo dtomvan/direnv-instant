@@ -1,11 +1,13 @@
 use crate::daemon::stop_daemon;
 use nix::sys::select::{FdSet, select};
 use nix::sys::signal::{SaFlags, SigAction, SigHandler, SigSet, Signal, sigaction};
+use nix::sys::socket::{ControlMessageOwned, MsgFlags, recvmsg};
+use nix::sys::termios::{InputFlags, LocalFlags, SetArg, Termios, tcgetattr, tcsetattr};
 use nix::sys::time::{TimeVal, TimeValLike};
-use nix::unistd::read;
+use nix::unistd::{isatty, read, write};
 use std::fs::File;
-use std::io::{self, Write};
-use std::os::fd::AsFd;
+use std::io::{self, IoSliceMut, Stdin, Write};
+use std::os::fd::{AsFd, AsRawFd, FromRawFd, OwnedFd, RawFd};
 use std::os::unix::net::UnixStream;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -15,6 +17,41 @@ static WATCH_RUNNING: AtomicBool = AtomicBool::new(true);
 
 extern "C" fn sigint_handler(_: nix::libc::c_int) {
     WATCH_RUNNING.store(false, Ordering::SeqCst);
+}
+
+/// RAII guard that restores terminal settings on drop
+struct RawModeGuard<'a> {
+    stdin: &'a Stdin,
+    original_termios: Termios,
+}
+
+impl<'a> RawModeGuard<'a> {
+    fn new(stdin: &'a Stdin) -> Option<Self> {
+        let original_termios = tcgetattr(stdin).ok()?;
+        let mut raw_termios = original_termios.clone();
+
+        // Disable canonical mode and echo
+        raw_termios
+            .local_flags
+            .remove(LocalFlags::ICANON | LocalFlags::ECHO | LocalFlags::ISIG);
+        // Disable input processing (Ctrl-C, Ctrl-Z, etc.)
+        raw_termios
+            .input_flags
+            .remove(InputFlags::ICRNL | InputFlags::IXON);
+
+        tcsetattr(stdin, SetArg::TCSANOW, &raw_termios).ok()?;
+
+        Some(RawModeGuard {
+            stdin,
+            original_termios,
+        })
+    }
+}
+
+impl Drop for RawModeGuard<'_> {
+    fn drop(&mut self) {
+        let _ = tcsetattr(self.stdin, SetArg::TCSANOW, &self.original_termios);
+    }
 }
 
 pub fn run(log_path: &Path, socket_path: &Path) {
@@ -40,7 +77,86 @@ pub fn run(log_path: &Path, socket_path: &Path) {
         }
     };
 
-    // Connect to daemon socket - will be closed when daemon exits
+    let stdin = io::stdin();
+    let stdin_is_terminal = isatty(&stdin).unwrap_or(false);
+
+    // Socket 1: Get PTY fd if stdin is a terminal (then close)
+    let pty_master = if stdin_is_terminal {
+        match UnixStream::connect(socket_path) {
+            Ok(mut watch_socket) => {
+                // Request PTY fd
+                if watch_socket.write_all(b"WATCH\n").is_err() {
+                    None
+                } else {
+                    // Wait for response with timeout (5 seconds)
+                    let mut fds = FdSet::new();
+                    fds.insert(watch_socket.as_fd());
+                    let mut timeout = TimeVal::seconds(5);
+
+                    match select(None, Some(&mut fds), None, None, Some(&mut timeout)) {
+                        Ok(_) if fds.contains(watch_socket.as_fd()) => {
+                            // Receive PTY master fd via SCM_RIGHTS
+                            let mut iov = [0u8; 16];
+                            let mut iov_slice = [IoSliceMut::new(&mut iov)];
+                            let mut cmsg_space = nix::cmsg_space!([RawFd; 1]);
+
+                            match recvmsg::<()>(
+                                watch_socket.as_raw_fd(),
+                                &mut iov_slice,
+                                Some(&mut cmsg_space),
+                                MsgFlags::empty(),
+                            ) {
+                                Ok(msg) => {
+                                    let mut received_fd = None;
+                                    if let Ok(cmsgs) = msg.cmsgs() {
+                                        for cmsg in cmsgs {
+                                            if let ControlMessageOwned::ScmRights(fds) = cmsg
+                                                && let Some(&fd) = fds.first()
+                                            {
+                                                received_fd =
+                                                    Some(unsafe { OwnedFd::from_raw_fd(fd) });
+                                                break;
+                                            }
+                                        }
+                                    }
+                                    received_fd
+                                }
+                                Err(e) => {
+                                    eprintln!("direnv-instant: Failed to receive PTY fd: {}", e);
+                                    None
+                                }
+                            }
+                        }
+                        Ok(_) => {
+                            // Timeout: daemon didn't respond in time
+                            eprintln!("direnv-instant: Timeout waiting for PTY fd from daemon");
+                            None
+                        }
+                        Err(e) => {
+                            eprintln!(
+                                "direnv-instant: select() error while waiting for PTY fd: {}",
+                                e
+                            );
+                            None
+                        }
+                    }
+                }
+                // watch_socket is dropped here, closing the connection
+            }
+            Err(_) => None,
+        }
+    } else {
+        None
+    };
+
+    // Set stdin to raw mode for transparent input forwarding (only if we have PTY fd)
+    let _raw_mode_guard = if pty_master.is_some() {
+        RawModeGuard::new(&stdin)
+    } else {
+        None
+    };
+
+    // Socket 2: Monitor daemon exit (long-lived connection)
     let socket = UnixStream::connect(socket_path).unwrap_or_else(|_| std::process::exit(1));
 
     let mut buf = [0u8; 8192];
@@ -49,21 +165,27 @@ pub fn run(log_path: &Path, socket_path: &Path) {
 
     while WATCH_RUNNING.load(Ordering::SeqCst) {
         let mut fds = FdSet::new();
-        fds.insert(log_file.as_fd());
         fds.insert(socket.as_fd());
+        if stdin_is_terminal && pty_master.is_some() {
+            fds.insert(stdin.as_fd());
+        }
         let mut timeout = TimeVal::milliseconds(100);
 
         match select(None, Some(&mut fds), None, None, Some(&mut timeout)) {
             Ok(_) => {
-                // Check if log file has new data
-                if fds.contains(log_file.as_fd()) {
-                    match read(&log_file, &mut buf) {
+                // Check if stdin has data to forward to PTY
+                if stdin_is_terminal
+                    && fds.contains(stdin.as_fd())
+                    && let Some(ref pty) = pty_master
+                {
+                    match read(&stdin, &mut buf) {
                         Ok(0) => {
-                            // No data available yet, continue
+                            // EOF on stdin
+                            break;
                         }
                         Ok(n) => {
-                            let _ = handle.write_all(&buf[..n]);
-                            let _ = handle.flush();
+                            // Forward input to PTY master
+                            let _ = write(pty, &buf[..n]);
                         }
                         Err(_) => {}
                     }
@@ -91,6 +213,18 @@ pub fn run(log_path: &Path, socket_path: &Path) {
                 }
             }
             Err(_) => break,
+        }
+
+        // Poll log file on every iteration (regular files don't work with select)
+        match read(&log_file, &mut buf) {
+            Ok(0) => {
+                // No data available yet, continue
+            }
+            Ok(n) => {
+                let _ = handle.write_all(&buf[..n]);
+                let _ = handle.flush();
+            }
+            Err(_) => {}
         }
     }
 

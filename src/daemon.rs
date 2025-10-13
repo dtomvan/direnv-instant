@@ -3,6 +3,7 @@ use nix::libc;
 use nix::pty::{ForkptyResult, Winsize, forkpty};
 use nix::sys::select::{FdSet, select};
 use nix::sys::signal::{Signal, kill};
+use nix::sys::socket::{ControlMessage, MsgFlags, sendmsg};
 use nix::sys::time::{TimeVal, TimeValLike};
 use nix::sys::wait::{WaitPidFlag, WaitStatus, waitpid};
 use nix::unistd::{ForkResult, Pid, dup2_stderr, dup2_stdin, dup2_stdout, fork, read, setsid};
@@ -10,8 +11,8 @@ use std::collections::hash_map::DefaultHasher;
 use std::ffi::OsString;
 use std::fs::{File, remove_file};
 use std::hash::{Hash, Hasher};
-use std::io::{BufRead, BufReader, Write};
-use std::os::fd::{AsFd, OwnedFd};
+use std::io::{BufRead, BufReader, IoSlice, Write};
+use std::os::fd::{AsFd, AsRawFd, OwnedFd};
 use std::os::unix::ffi::OsStringExt;
 use std::os::unix::fs::PermissionsExt;
 use std::os::unix::net::{UnixListener, UnixStream};
@@ -185,9 +186,10 @@ fn handle_socket_commands(
     listener: UnixListener,
     notify_pids: Arc<Mutex<Vec<i32>>>,
     should_stop: Arc<AtomicBool>,
+    pty_master: Arc<Mutex<Option<OwnedFd>>>,
 ) {
     for stream in listener.incoming().flatten() {
-        let mut reader = BufReader::new(stream);
+        let mut reader = BufReader::new(&stream);
         let mut line = String::new();
         if reader.read_line(&mut line).is_ok() {
             if let Some(stripped) = line.strip_prefix("NOTIFY ") {
@@ -197,6 +199,33 @@ fn handle_socket_commands(
             } else if line.starts_with("STOP") {
                 should_stop.store(true, Ordering::Relaxed);
                 break;
+            } else if line.starts_with("WATCH") {
+                // Send PTY master fd to watch command via SCM_RIGHTS
+                if let Some(ref owned_fd) = *pty_master.lock().expect("Failed to lock") {
+                    let iov = [IoSlice::new(b"OK\n")];
+                    let fds = [owned_fd.as_raw_fd()];
+                    let cmsg = ControlMessage::ScmRights(&fds);
+                    if let Err(e) =
+                        sendmsg::<()>(stream.as_raw_fd(), &iov, &[cmsg], MsgFlags::empty(), None)
+                    {
+                        eprintln!(
+                            "direnv-instant: Failed to send PTY fd to WATCH client: {}",
+                            e
+                        );
+                    }
+                } else {
+                    // PTY master not available, send error response
+                    eprintln!("direnv-instant: WATCH requested but PTY master not available");
+                    let iov = [IoSlice::new(b"ERR\n")];
+                    if let Err(e) =
+                        sendmsg::<()>(stream.as_raw_fd(), &iov, &[], MsgFlags::empty(), None)
+                    {
+                        eprintln!(
+                            "direnv-instant: Failed to send error response to WATCH client: {}",
+                            e
+                        );
+                    }
+                }
             }
         }
     }
@@ -208,14 +237,16 @@ fn run_direnv(direnv_cmd: &str, ctx: &DaemonContext) {
     let listener = UnixListener::bind(&ctx.socket_path).expect("Failed to bind socket");
     let notify_pids = Arc::new(Mutex::new(vec![ctx.parent_pid]));
     let should_stop = Arc::new(AtomicBool::new(false));
+    let pty_master: Arc<Mutex<Option<OwnedFd>>> = Arc::new(Mutex::new(None));
 
     let notify_clone = notify_pids.clone();
     let stop_clone = should_stop.clone();
-    thread::spawn(move || handle_socket_commands(listener, notify_clone, stop_clone));
+    let pty_clone = pty_master.clone();
+    thread::spawn(move || handle_socket_commands(listener, notify_clone, stop_clone, pty_clone));
 
     match unsafe { forkpty(Some(&PTY_WINSIZE), None) } {
         Ok(ForkptyResult::Parent { child, master }) => {
-            parent_process(child, master, notify_pids, ctx, should_stop)
+            parent_process(child, master, notify_pids, ctx, should_stop, pty_master)
         }
         Ok(ForkptyResult::Child) => child_process(direnv_cmd, &ctx.temp_file),
         Err(e) => {
@@ -316,7 +347,11 @@ fn parent_process(
     notify_pids: Arc<Mutex<Vec<i32>>>,
     ctx: &DaemonContext,
     should_stop: Arc<AtomicBool>,
+    pty_master: Arc<Mutex<Option<OwnedFd>>>,
 ) {
+    // Store PTY master fd for WATCH command (duplicate it to keep it alive)
+    *pty_master.lock().expect("Failed to lock") = master.try_clone().ok();
+
     // Create temp stderr file for writing direnv PTY output
     let mut log_file = match File::create(&ctx.temp_stderr) {
         Ok(f) => f,
