@@ -17,7 +17,7 @@ rustPlatform.buildRustPackage {
     ];
   };
 
-  cargoHash = "sha256-58jKfejh5QnB2LSO7EfaBryVv5+oBcW9miA8FbjKl+0=";
+  cargoHash = "sha256-aiF9FGEcf1Drj+cg8CTiv0oKc7tDTOiK2N8qdELQLHw=";
 
   meta = with lib; {
     description = "Non-blocking direnv integration daemon with tmux support";
