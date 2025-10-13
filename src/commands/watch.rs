@@ -165,7 +165,6 @@ pub fn run(log_path: &Path, socket_path: &Path) {
 
     while WATCH_RUNNING.load(Ordering::SeqCst) {
         let mut fds = FdSet::new();
-        fds.insert(log_file.as_fd());
         fds.insert(socket.as_fd());
         if stdin_is_terminal && pty_master.is_some() {
             fds.insert(stdin.as_fd());
@@ -187,20 +186,6 @@ pub fn run(log_path: &Path, socket_path: &Path) {
                         Ok(n) => {
                             // Forward input to PTY master
                             let _ = write(pty, &buf[..n]);
-                        }
-                        Err(_) => {}
-                    }
-                }
-
-                // Check if log file has new data
-                if fds.contains(log_file.as_fd()) {
-                    match read(&log_file, &mut buf) {
-                        Ok(0) => {
-                            // No data available yet, continue
-                        }
-                        Ok(n) => {
-                            let _ = handle.write_all(&buf[..n]);
-                            let _ = handle.flush();
                         }
                         Err(_) => {}
                     }
@@ -228,6 +213,18 @@ pub fn run(log_path: &Path, socket_path: &Path) {
                 }
             }
             Err(_) => break,
+        }
+
+        // Poll log file on every iteration (regular files don't work with select)
+        match read(&log_file, &mut buf) {
+            Ok(0) => {
+                // No data available yet, continue
+            }
+            Ok(n) => {
+                let _ = handle.write_all(&buf[..n]);
+                let _ = handle.flush();
+            }
+            Err(_) => {}
         }
     }
 
