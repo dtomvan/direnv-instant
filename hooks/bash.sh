@@ -32,7 +32,11 @@ _direnv_hook() {
     eval "$(<"$__DIRENV_INSTANT_ENV_FILE")"
   fi
 
+  local previous_exit_status=$?;
+  trap -- '' SIGINT;
   eval "$(direnv-instant start)"
+  trap - SIGINT;
+  return $previous_exit_status;
 }
 
 # Cleanup on shell exit
