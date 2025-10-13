@@ -138,8 +138,6 @@ eval "$(direnv-instant hook zsh)"
 
 - `DIRENV_INSTANT_USE_CACHE`: Enable cached environment loading for instant prompts (default: 1). Set to 0 to disable caching.
 - `DIRENV_INSTANT_MUX_DELAY`: Delay in seconds before spawning multiplexer pane (default: 4)
-- `DIRENV_INSTANT_TMUX_DELAY`: Delay in seconds before spawning tmux pane (default: `$DIRENV_INSTANT_MUX_DELAY`)
-- `DIRENV_INSTANT_ZELLIJ_DELAY`: Delay in seconds before spawning zellij pane (default: `$DIRENV_INSTANT_MUX_DELAY`)
 - `DIRENV_INSTANT_DEBUG_LOG`: Path to debug log file for daemon output
 
 ## FAQ

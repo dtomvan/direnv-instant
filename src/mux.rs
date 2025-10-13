@@ -62,16 +62,8 @@ impl Multiplexer {
     }
 
     pub fn mux_delay_ms(&self) -> u64 {
-        let specific_env = match self {
-            Multiplexer::Tmux => "DIRENV_INSTANT_TMUX_DELAY",
-            Multiplexer::Zellij => "DIRENV_INSTANT_ZELLIJ_DELAY",
-        };
-
-        ([specific_env, "DIRENV_INSTANT_MUX_DELAY"])
-            .iter()
-            .map(env::var)
-            .flat_map(Result::ok)
-            .next()
+        env::var("DIRENV_INSTANT_MUX_DELAY")
+            .ok()
             .and_then(|s| s.parse::<u64>().ok())
             .map(|s| s * 1000)
             .unwrap_or(4000)
