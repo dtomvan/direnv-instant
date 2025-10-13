@@ -36,13 +36,13 @@ def setup_stub_tmux(tmp_path: Path, script_body: str = "exit 0") -> Path:
 
 
 def setup_test_env(
-    tmp_path: Path, shell_pid: int, tmux_delay: str = "1"
+    tmp_path: Path, shell_pid: int, mux_delay: str = "1"
 ) -> dict[str, str]:
     """Prepare environment for direnv-instant tests."""
     env = os.environ.copy()
     env["TMUX"] = "test"
     env["DIRENV_INSTANT_SHELL_PID"] = str(shell_pid)
-    env["DIRENV_INSTANT_TMUX_DELAY"] = tmux_delay
+    env["DIRENV_INSTANT_MUX_DELAY"] = mux_delay
     env["PATH"] = f"{tmp_path}:{env['PATH']}"
     return env
 

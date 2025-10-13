@@ -29,7 +29,7 @@ def test_stop_command_stops_daemon(
     setup_stub_tmux(tmp_path)
     allow_direnv(tmp_path, monkeypatch)
 
-    env = setup_test_env(tmp_path, os.getpid(), tmux_delay="60")
+    env = setup_test_env(tmp_path, os.getpid(), mux_delay="60")
 
     result = direnv_instant.run(["start"], env)
     assert result.returncode == 0

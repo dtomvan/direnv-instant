@@ -1,6 +1,7 @@
 use crate::daemon::{
     DaemonContext, direnv_export_command, get_socket_path, notify_daemon, start_daemon, stop_daemon,
 };
+use crate::mux::Multiplexer;
 use nix::unistd::getppid;
 use std::env;
 use std::path::{Path, PathBuf};
@@ -32,8 +33,8 @@ pub fn run() {
     }
     export_path_var("__DIRENV_INSTANT_CURRENT_DIR", &envrc_dir);
 
-    // If not in tmux, just run direnv synchronously
-    if env::var("TMUX").is_err() {
+    // If not in a multiplexer, just run direnv synchronously
+    if Multiplexer::detect().is_none() {
         run_direnv_sync(direnv, true);
         return;
     }
