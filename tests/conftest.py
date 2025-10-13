@@ -145,3 +145,16 @@ def signal_waiter() -> Generator[SignalWaiter]:
         yield waiter
     finally:
         waiter.cleanup()
+
+
+@pytest.fixture
+def subprocess_runner() -> Generator[list[subprocess.Popen[str]]]:
+    """Manage subprocesses and ensure cleanup."""
+    processes: list[subprocess.Popen[str]] = []
+    try:
+        yield processes
+    finally:
+        for proc in processes:
+            if proc.poll() is None:
+                proc.kill()
+                proc.wait()

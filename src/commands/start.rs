@@ -4,6 +4,7 @@ use crate::daemon::{
 use crate::mux::Multiplexer;
 use nix::unistd::getppid;
 use std::env;
+use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 
@@ -76,7 +77,11 @@ fn run_direnv_sync(direnv: &str, show_errors: bool) {
     if !show_errors {
         cmd.stderr(Stdio::null());
     }
-    let _ = cmd.status();
+
+    let err = cmd.exec();
+
+    eprintln!("direnv-instant: Failed to exec direnv: {}", err);
+    std::process::exit(1);
 }
 
 fn export_path_var(name: &str, path: &Path) {
