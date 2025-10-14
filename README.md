@@ -9,7 +9,7 @@ Non-blocking direnv integration daemon with tmux/zellij support that provides in
 - **Instant Prompts**: No more waiting for direnv to finish loading environments
 - **Environment Caching**: Uses cached environment from previous load for truly instant prompts
 - **Asynchronous Loading**: Direnv runs in the background, shell gets notified when ready via SIGUSR1
-- **Tmux/Zellij Integration**: Automatically spawns a tmux/zellij pane to show direnv output when loading takes too long
+- **Multiplexer Integration**: Automatically spawns a tmux/zellij pane to show direnv output when loading takes too long
 - **Shell Support**: Works with both bash and zsh
 
 ## How It Works
@@ -21,6 +21,12 @@ Instead of blocking your shell prompt while direnv loads environment variables, 
 3. Notifies your shell via SIGUSR1 when the environment is ready
 4. Automatically applies the new environment variables without disrupting your workflow
 5. If direnv takes longer than 4 seconds (configurable), spawns a tmux/zellij pane showing progress
+
+## Supported multiplexers
+- Kitty (with `-o allow_remote_control=yes --listen-on unix:"$(mktemp)"` only)
+- Tmux
+- Wezterm
+- Zellij
 
 ## Recommended
 

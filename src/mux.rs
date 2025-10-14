@@ -1,14 +1,21 @@
-use std::{env, io, process::Command};
+use std::{
+    env,
+    io::{self, Error},
+    process::Command,
+};
 
 use crate::daemon::DaemonContext;
 
 const PANE_HEIGHT: &str = "10";
+const KITTY_VAR: &str = "KITTY_LISTEN_ON";
 
 #[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Multiplexer {
     Tmux,
     Zellij,
+    Wezterm,
+    Kitty,
 }
 
 impl Multiplexer {
@@ -19,6 +26,14 @@ impl Multiplexer {
 
         if env::var("ZELLIJ").is_ok() {
             return Some(Self::Zellij);
+        }
+
+        if env::var("TERM_PROGRAM").is_ok_and(|x| x == "WezTerm") {
+            return Some(Self::Wezterm);
+        }
+
+        if env::var(KITTY_VAR).is_ok() {
+            return Some(Self::Kitty);
         }
 
         None
@@ -34,6 +49,8 @@ impl Multiplexer {
         let mux_bin = match self {
             Multiplexer::Tmux => "tmux",
             Multiplexer::Zellij => "zellij",
+            Multiplexer::Wezterm => "wezterm",
+            Multiplexer::Kitty => "kitty",
         };
 
         let mux_args = match self {
@@ -47,9 +64,18 @@ impl Multiplexer {
                 PANE_HEIGHT,
                 "--",
             ],
+            Multiplexer::Wezterm => vec!["cli", "split-pane", "--bottom", "--cells", PANE_HEIGHT],
+            Multiplexer::Kitty => vec!["@", "launch", "--location", "vsplit", "--keep-focus"],
         };
 
-        Command::new(mux_bin)
+        let mut command = Command::new(mux_bin);
+
+        if *self == Multiplexer::Kitty {
+            let kitty_listen_on = env::var(KITTY_VAR).map_err(|e| Error::other(e.to_string()))?;
+            command.args(["--to", kitty_listen_on.as_str()]);
+        }
+
+        command
             .args(mux_args)
             .args([
                 &bin,
@@ -60,12 +86,12 @@ impl Multiplexer {
             .spawn()
             .map(|_| ())
     }
+}
 
-    pub fn mux_delay_ms(&self) -> u64 {
-        env::var("DIRENV_INSTANT_MUX_DELAY")
-            .ok()
-            .and_then(|s| s.parse::<u64>().ok())
-            .map(|s| s * 1000)
-            .unwrap_or(4000)
-    }
+pub fn mux_delay_ms() -> u64 {
+    env::var("DIRENV_INSTANT_MUX_DELAY")
+        .ok()
+        .and_then(|s| s.parse::<u64>().ok())
+        .map(|s| s * 1000)
+        .unwrap_or(4000)
 }

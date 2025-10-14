@@ -22,7 +22,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::{env, thread};
 
-use crate::mux::Multiplexer;
+use crate::mux::{self, Multiplexer};
 
 const PTY_WINSIZE: Winsize = Winsize {
     ws_row: 24,
@@ -291,7 +291,7 @@ fn copy_pty_to_logfile(
 ) -> bool {
     use std::time::Instant;
 
-    let mux_delay_ms = ctx.multiplexer.map(|x| x.mux_delay_ms()).unwrap_or(4000);
+    let mux_delay_ms = mux::mux_delay_ms();
 
     let mut buf = [0u8; 8192];
     let mut total_bytes = 0;
