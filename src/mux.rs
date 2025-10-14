@@ -1,8 +1,13 @@
-use std::{env, io, process::Command};
+use std::{
+    env,
+    io::{self, Error},
+    process::Command,
+};
 
 use crate::daemon::DaemonContext;
 
 const PANE_HEIGHT: &str = "10";
+const KITTY_VAR: &str = "KITTY_LISTEN_ON";
 
 #[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -10,6 +15,7 @@ pub enum Multiplexer {
     Tmux,
     Zellij,
     Wezterm,
+    Kitty,
 }
 
 impl Multiplexer {
@@ -26,6 +32,10 @@ impl Multiplexer {
             return Some(Self::Wezterm);
         }
 
+        if env::var(KITTY_VAR).is_ok() {
+            return Some(Self::Kitty);
+        }
+
         None
     }
 
@@ -40,6 +50,7 @@ impl Multiplexer {
             Multiplexer::Tmux => "tmux",
             Multiplexer::Zellij => "zellij",
             Multiplexer::Wezterm => "wezterm",
+            Multiplexer::Kitty => "kitty",
         };
 
         let mux_args = match self {
@@ -54,9 +65,17 @@ impl Multiplexer {
                 "--",
             ],
             Multiplexer::Wezterm => vec!["cli", "split-pane", "--bottom", "--cells", PANE_HEIGHT],
+            Multiplexer::Kitty => vec!["@", "launch", "--location", "vsplit", "--keep-focus"],
         };
 
-        Command::new(mux_bin)
+        let mut command = Command::new(mux_bin);
+
+        if *self == Multiplexer::Kitty {
+            let kitty_listen_on = env::var(KITTY_VAR).map_err(|e| Error::other(e.to_string()))?;
+            command.args(["--to", kitty_listen_on.as_str()]);
+        }
+
+        command
             .args(mux_args)
             .args([
                 &bin,

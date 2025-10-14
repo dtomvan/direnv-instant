@@ -23,6 +23,7 @@ Instead of blocking your shell prompt while direnv loads environment variables, 
 5. If direnv takes longer than 4 seconds (configurable), spawns a tmux/zellij pane showing progress
 
 ## Supported multiplexers
+- Kitty (with `-o allow_remote_control=yes --listen-on unix:"$(mktemp)"` only)
 - Tmux
 - Wezterm
 - Zellij

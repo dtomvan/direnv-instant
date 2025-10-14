@@ -58,6 +58,7 @@ export SLOW_TEST=completed
         "TMUX",
         "ZELLIJ",
         "TERM_PROGRAM",
+        "KITTY_LISTEN_ON",
     ]:
         env.pop(e, None)
 
