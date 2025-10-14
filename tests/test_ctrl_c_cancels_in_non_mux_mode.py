@@ -52,10 +52,10 @@ export SLOW_TEST=completed
 
     allow_direnv(tmp_path, monkeypatch)
 
-    # Prepare environment WITHOUT multiplexer (no TMUX or ZELLIJ_SESSION_NAME)
+    # Prepare environment WITHOUT multiplexer
     env = os.environ.copy()
     env.pop("TMUX", None)
-    env.pop("ZELLIJ_SESSION_NAME", None)
+    env.pop("ZELLIJ", None)
     # Ensure we're in the test directory
     env["PWD"] = str(tmp_path)
 
