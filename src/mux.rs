@@ -9,6 +9,7 @@ const PANE_HEIGHT: &str = "10";
 pub enum Multiplexer {
     Tmux,
     Zellij,
+    Wezterm,
 }
 
 impl Multiplexer {
@@ -19,6 +20,10 @@ impl Multiplexer {
 
         if env::var("ZELLIJ").is_ok() {
             return Some(Self::Zellij);
+        }
+
+        if env::var("TERM_PROGRAM").is_ok_and(|x| x == "WezTerm") {
+            return Some(Self::Wezterm);
         }
 
         None
@@ -34,6 +39,7 @@ impl Multiplexer {
         let mux_bin = match self {
             Multiplexer::Tmux => "tmux",
             Multiplexer::Zellij => "zellij",
+            Multiplexer::Wezterm => "wezterm",
         };
 
         let mux_args = match self {
@@ -47,6 +53,7 @@ impl Multiplexer {
                 PANE_HEIGHT,
                 "--",
             ],
+            Multiplexer::Wezterm => vec!["cli", "split-pane", "--bottom", "--cells", PANE_HEIGHT],
         };
 
         Command::new(mux_bin)
