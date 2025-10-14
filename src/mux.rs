@@ -60,12 +60,12 @@ impl Multiplexer {
             .spawn()
             .map(|_| ())
     }
+}
 
-    pub fn mux_delay_ms(&self) -> u64 {
-        env::var("DIRENV_INSTANT_MUX_DELAY")
-            .ok()
-            .and_then(|s| s.parse::<u64>().ok())
-            .map(|s| s * 1000)
-            .unwrap_or(4000)
-    }
+pub fn mux_delay_ms() -> u64 {
+    env::var("DIRENV_INSTANT_MUX_DELAY")
+        .ok()
+        .and_then(|s| s.parse::<u64>().ok())
+        .map(|s| s * 1000)
+        .unwrap_or(4000)
 }
