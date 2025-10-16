@@ -65,14 +65,14 @@ impl Multiplexer {
                 "--",
             ],
             Multiplexer::Wezterm => vec!["cli", "split-pane", "--bottom", "--cells", PANE_HEIGHT],
-            Multiplexer::Kitty => vec!["@", "launch", "--location", "vsplit", "--keep-focus"],
+            Multiplexer::Kitty => vec!["launch", "--location", "vsplit", "--keep-focus"],
         };
 
         let mut command = Command::new(mux_bin);
 
         if *self == Multiplexer::Kitty {
             let kitty_listen_on = env::var(KITTY_VAR).map_err(|e| Error::other(e.to_string()))?;
-            command.args(["--to", kitty_listen_on.as_str()]);
+            command.args(["@", "--to", kitty_listen_on.as_str()]);
         }
 
         command

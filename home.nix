@@ -40,6 +40,10 @@ in
     enableBashIntegration = mkBashIntegrationOption { inherit config; };
     enableZshIntegration = mkZshIntegrationOption { inherit config; };
 
+    enableKittyIntegration = (mkEnableOption "kitty integration") // {
+      default = config.programs.kitty.enable;
+    };
+
     settings = {
       use_cache = (mkEnableOption "cached environment loading for instant prompts") // {
         default = true;
@@ -67,7 +71,12 @@ in
           wrapProgram $out/bin/direnv-instant \
             --set-default DIRENV_INSTANT_USE_CACHE ${if cfg.settings.use_cache then "1" else "0"} \
             --set-default DIRENV_INSTANT_MUX_DELAY ${builtins.toString cfg.settings.mux_delay} \
-            ${if cfg.settings.debug_log != "null" then "--set-default DIRENV_INSTANT_DEBUG_LOG" else ""}
+            ${
+              if cfg.settings.debug_log != null then
+                "--set-default DIRENV_INSTANT_DEBUG_LOG ${cfg.settings.debug_log}"
+              else
+                ""
+            }
         '';
       });
     in
@@ -89,5 +98,10 @@ in
       programs.zsh.initContent = mkIf cfg.enableZshIntegration ''
         eval "$(direnv-instant hook zsh)"
       '';
+
+      programs.kitty.settings = mkIf cfg.enableKittyIntegration {
+        allow_remote_control = true;
+        listen_on = ''unix:kitty-{kitty_pid}'';
+      };
     };
 }
