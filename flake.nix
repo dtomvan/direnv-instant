@@ -13,51 +13,65 @@
 
   outputs =
     inputs@{ flake-parts, ... }:
-    flake-parts.lib.mkFlake { inherit inputs; } {
-      systems = [
-        "x86_64-linux"
-        "aarch64-linux"
-        "x86_64-darwin"
-        "aarch64-darwin"
-      ];
+    flake-parts.lib.mkFlake { inherit inputs; } (
+      { self, ... }:
+      {
+        systems = [
+          "x86_64-linux"
+          "aarch64-linux"
+          "x86_64-darwin"
+          "aarch64-darwin"
+        ];
 
-      imports = [ ./treefmt.nix ];
+        imports = [ ./treefmt.nix ];
 
-      perSystem =
-        {
-          self',
-          pkgs,
-          lib,
-          ...
-        }:
-        {
-          packages.direnv-instant = pkgs.callPackage ./default.nix { };
-          packages.default = self'.packages.direnv-instant;
+        perSystem =
+          {
+            self',
+            pkgs,
+            lib,
+            ...
+          }:
+          {
+            packages.direnv-instant = pkgs.callPackage ./default.nix { };
+            packages.default = self'.packages.direnv-instant;
 
-          devShells.default = pkgs.mkShell {
-            inputsFrom = [
-              self'.packages.direnv-instant
-              self'.checks.tests
-            ];
-            packages = with pkgs; [
-              rustfmt
-              clippy
-              rust-analyzer
-            ];
+            devShells.default = pkgs.mkShell {
+              inputsFrom = [
+                self'.packages.direnv-instant
+                self'.checks.tests
+              ];
+              packages = with pkgs; [
+                rustfmt
+                clippy
+                rust-analyzer
+              ];
+            };
+
+            checks =
+              let
+                packages = lib.mapAttrs' (n: lib.nameValuePair "package-${n}") self'.packages;
+                devShells = lib.mapAttrs' (n: lib.nameValuePair "devShell-${n}") self'.devShells;
+              in
+              packages
+              // devShells
+              // {
+                tests = pkgs.callPackage ./tests.nix {
+                  direnv-instant = self'.packages.direnv-instant;
+                };
+              };
           };
 
-          checks =
-            let
-              packages = lib.mapAttrs' (n: lib.nameValuePair "package-${n}") self'.packages;
-              devShells = lib.mapAttrs' (n: lib.nameValuePair "devShell-${n}") self'.devShells;
-            in
-            packages
-            // devShells
-            // {
-              tests = pkgs.callPackage ./tests.nix {
-                direnv-instant = self'.packages.direnv-instant;
-              };
-            };
+        flake = {
+          homeModules.direnv-instant = ./home.nix;
+          homeModules.default = self.homeModules.direnv-instant;
+
+          overlays.direnv-instant = _final: prev: {
+            inherit (self.packages.${prev.stdenv.hostPlatform.system}) direnv-instant;
+          };
+          overlays.default = self.overlays.direnv-instant;
+          overlay = self.overlays.direnv-instant;
         };
-    };
+      }
+    );
 }
