@@ -67,13 +67,13 @@ in
     let
       finalPackage = cfg.package.overrideAttrs (prev: {
         nativeBuildInputs = (prev.nativeBuildInputs or [ ]) ++ [ pkgs.makeWrapper ];
-        postInstall = prev.postInstall or "" + ''
+        postInstall = (prev.postInstall or "") + ''
           wrapProgram $out/bin/direnv-instant \
             --set-default DIRENV_INSTANT_USE_CACHE ${if cfg.settings.use_cache then "1" else "0"} \
             --set-default DIRENV_INSTANT_MUX_DELAY ${builtins.toString cfg.settings.mux_delay} \
             ${
               if cfg.settings.debug_log != null then
-                "--set-default DIRENV_INSTANT_DEBUG_LOG ${cfg.settings.debug_log}"
+                "--set-default DIRENV_INSTANT_DEBUG_LOG '${cfg.settings.debug_log}'"
               else
                 ""
             }
