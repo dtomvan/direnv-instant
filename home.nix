@@ -11,7 +11,7 @@ let
     mkEnableOption
     mkIf
     mkOption
-    mkPackageOption
+    optionalString
     ;
 
   inherit (lib.hm.shell)
@@ -29,7 +29,12 @@ in
 {
   options.programs.direnv-instant = {
     enable = mkEnableOption "non-blocking direnv integration daemon with tmux support";
-    package = mkPackageOption pkgs "direnv-instant" { };
+    package = mkOption {
+      type = package;
+      default = pkgs.callPackage ./default.nix { };
+      defaultText = lib.literalExpression "pkgs.callPackage ./default.nix { }";
+      description = "The direnv-instant package to use.";
+    };
     finalPackage = mkOption {
       description = "Resulting direnv-instant package";
       type = package;
@@ -71,12 +76,9 @@ in
           wrapProgram $out/bin/direnv-instant \
             --set-default DIRENV_INSTANT_USE_CACHE ${if cfg.settings.use_cache then "1" else "0"} \
             --set-default DIRENV_INSTANT_MUX_DELAY ${builtins.toString cfg.settings.mux_delay} \
-            ${
-              if cfg.settings.debug_log != null then
-                "--set-default DIRENV_INSTANT_DEBUG_LOG '${cfg.settings.debug_log}'"
-              else
-                ""
-            }
+            ${optionalString (
+              cfg.settings.debug_log != null
+            ) "--set-default DIRENV_INSTANT_DEBUG_LOG '${cfg.settings.debug_log}'"}
         '';
       });
     in

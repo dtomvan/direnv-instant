@@ -63,8 +63,6 @@ Now add to your home-manager configuration:
     inputs.direnv-instant.homeModules.direnv-instant
   ];
 
-  nixpkgs.overlays = [ inputs.direnv-instant.overlays.direnv-instant ];
-
   programs.direnv-instant.enable = true;
 }
 ```

@@ -65,12 +65,6 @@
         flake = {
           homeModules.direnv-instant = ./home.nix;
           homeModules.default = self.homeModules.direnv-instant;
-
-          overlays.direnv-instant = _final: prev: {
-            inherit (self.packages.${prev.stdenv.hostPlatform.system}) direnv-instant;
-          };
-          overlays.default = self.overlays.direnv-instant;
-          overlay = self.overlays.direnv-instant;
         };
       }
     );
