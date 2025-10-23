@@ -70,17 +70,21 @@ in
 
   config =
     let
-      finalPackage = cfg.package.overrideAttrs (prev: {
-        nativeBuildInputs = (prev.nativeBuildInputs or [ ]) ++ [ pkgs.makeWrapper ];
-        postInstall = (prev.postInstall or "") + ''
-          wrapProgram $out/bin/direnv-instant \
-            --set-default DIRENV_INSTANT_USE_CACHE ${if cfg.settings.use_cache then "1" else "0"} \
-            --set-default DIRENV_INSTANT_MUX_DELAY ${builtins.toString cfg.settings.mux_delay} \
-            ${optionalString (
-              cfg.settings.debug_log != null
-            ) "--set-default DIRENV_INSTANT_DEBUG_LOG '${cfg.settings.debug_log}'"}
-        '';
-      });
+      finalPackage =
+        pkgs.runCommand "direnv-instant-wrapped"
+          {
+            nativeBuildInputs = [ pkgs.makeWrapper ];
+            inherit (cfg.package) meta;
+          }
+          ''
+            mkdir -p $out/bin
+            makeWrapper ${cfg.package}/bin/direnv-instant $out/bin/direnv-instant \
+              --set-default DIRENV_INSTANT_USE_CACHE ${if cfg.settings.use_cache then "1" else "0"} \
+              --set-default DIRENV_INSTANT_MUX_DELAY ${builtins.toString cfg.settings.mux_delay} \
+              ${optionalString (
+                cfg.settings.debug_log != null
+              ) "--set-default DIRENV_INSTANT_DEBUG_LOG '${cfg.settings.debug_log}'"}
+          '';
     in
     mkIf cfg.enable {
       programs.direnv-instant = { inherit finalPackage; };
