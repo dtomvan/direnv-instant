@@ -21,7 +21,7 @@ Instead of blocking your shell prompt while direnv loads environment variables, 
 5. If direnv takes longer than 4 seconds (configurable), spawns a tmux/zellij pane showing progress
 
 ## Supported multiplexers
-- Kitty (with `-o allow_remote_control=yes --listen-on unix:"$(mktemp)"` only)
+- Kitty (with home-manager module only)
 - Tmux
 - Wezterm
 - Zellij
@@ -59,9 +59,11 @@ Now add to your home-manager configuration:
 ```nix
 { inputs, pkgs, ... }:
 {
-  home.packages = [
-    inputs.direnv-instant.packages.${pkgs.stdenv.hostPlatform.system}.default
+  imports = [
+    inputs.direnv-instant.homeModules.direnv-instant
   ];
+
+  programs.direnv-instant.enable = true;
 }
 ```
 
