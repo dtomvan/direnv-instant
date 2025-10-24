@@ -34,6 +34,7 @@
           }:
           {
             packages.direnv-instant = pkgs.callPackage ./default.nix { };
+            packages.demo = pkgs.callPackage ./demo.nix { inherit (self'.packages) direnv-instant; };
             packages.default = self'.packages.direnv-instant;
 
             devShells.default = pkgs.mkShell {
